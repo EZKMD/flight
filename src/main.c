@@ -11,6 +11,7 @@
 #include "renderer.h"
 #include "runtime.h"
 #include "terminal.h"
+#include "telemetry_history.h"
 #include "visual_viewport.h"
 #include "version.h"
 
@@ -55,11 +56,13 @@ static void print_usage(FILE *output, const char *program)
         "options:\n"
         "  --date YYYY-MM-DD   constrain occurrence date\n"
         "  --fixture NAME      use deterministic mock data\n"
-        "  --view aircraft     select the V0.1 aircraft view\n"
+        "  --view NAME         select aircraft or altitude view\n"
         "  --debug-provider    print safe diagnostics after exit\n"
         "  --help              show this help\n"
         "  --version           show version\n"
         "\n"
+        "controls: q quit, r refresh, v switch view, f next fixture (fixture mode)\n"
+        "views: aircraft, altitude\n"
         "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable\n",
         program);
 }
@@ -100,11 +103,11 @@ static bool parse_arguments(int argc, char **argv, Options *options,
             }
             options->date = argv[index];
         } else if (strcmp(argv[index], "--view") == 0) {
-            if (++index >= argc || strcmp(argv[index], "aircraft") != 0) {
-                (void)snprintf(error, error_capacity, "--view currently supports only aircraft");
+            if (++index >= argc || !visual_mode_parse(argv[index], &options->view)) {
+                (void)snprintf(error, error_capacity,
+                               "--view requires aircraft or altitude");
                 return false;
             }
-            options->view = VISUAL_AIRCRAFT;
         } else if (strcmp(argv[index], "--debug-provider") == 0) {
             options->debug_provider = true;
         } else if (strcmp(argv[index], "--help") == 0) {
@@ -118,6 +121,33 @@ static bool parse_arguments(int argc, char **argv, Options *options,
         else options->flight_number = argv[index];
     }
     return true;
+}
+
+static bool history_identity(char output[TELEMETRY_HISTORY_ID_CAPACITY],
+                             const Options *options,
+                             const LiveDataProviderContext *live_context)
+{
+    if (options->use_fixture) {
+        (void)snprintf(output, TELEMETRY_HISTORY_ID_CAPACITY, "fixture:%s:%s",
+                       options->flight_number, mock_provider_fixture_name(options->fixture));
+        return true;
+    }
+    if (!live_context->have_resolved) return false;
+    if (live_context->resolved.occurrence_id[0] == '\0' &&
+        live_context->resolved.selected_leg.leg_id[0] == '\0') return false;
+    (void)snprintf(output, TELEMETRY_HISTORY_ID_CAPACITY, "%s|%s",
+                   live_context->resolved.occurrence_id,
+                   live_context->resolved.selected_leg.leg_id);
+    return output[0] != '\0';
+}
+
+static void collect_history(TelemetryHistory *history, const Options *options,
+                            const LiveDataProviderContext *live_context,
+                            const FlightState *flight)
+{
+    char identity[TELEMETRY_HISTORY_ID_CAPACITY];
+    if (history_identity(identity, options, live_context))
+        (void)telemetry_history_observe(history, identity, flight);
 }
 
 static uint64_t retry_delay(const FlightDataProvider *provider, ProviderResult result)
@@ -137,13 +167,14 @@ int main(int argc, char **argv)
     FlightState flight;
     FlightDataProvider provider;
     MockDataProviderContext mock_context;
-    LiveDataProviderContext live_context;
+    LiveDataProviderContext live_context = {0};
     FlightResolver resolver;
     TelemetryProvider telemetry;
     AirLabsResolverContext airlabs_context;
     OpenSkyTelemetryContext opensky_context;
     AnimationState animation;
     RuntimeSchedule schedule;
+    TelemetryHistory history;
     VisualViewport viewport;
     Terminal terminal;
     TerminalSize size;
@@ -186,6 +217,10 @@ int main(int argc, char **argv)
                            options.flight_number, options.date);
     }
     provider_result = provider.load(provider.context, &flight, time(NULL));
+    telemetry_history_init(&history);
+    telemetry_history_set_interval(&history,
+        (unsigned int)(provider.refresh_interval_ms / UINT64_C(1000)));
+    collect_history(&history, &options, &live_context, &flight);
     animation_init(&animation);
     runtime_schedule_init(&schedule, animation_now_ms());
     /* Airport mode is intentionally not CLI-reachable in V0.1. */
@@ -193,7 +228,7 @@ int main(int argc, char **argv)
         http_transport_cleanup();
         return 2;
     }
-    visual_viewport_init(&viewport, options.view, NULL);
+    visual_viewport_init(&viewport, options.view, &history);
     if (!terminal_install_resize_handler()) {
         (void)fputs("flight: could not install resize handler\n", stderr);
         http_transport_cleanup();
@@ -221,12 +256,17 @@ int main(int argc, char **argv)
             if (action == INPUT_QUIT) running = false;
             else if (action == INPUT_REFRESH) {
                 provider_result = provider.refresh(provider.context, &flight, time(NULL));
+                collect_history(&history, &options, &live_context, &flight);
                 runtime_defer_data(&schedule, now_ms, retry_delay(&provider, provider_result));
                 redraw = true;
             } else if (action == INPUT_NEXT_FIXTURE && options.use_fixture) {
                 options.fixture = mock_provider_next_fixture(options.fixture);
                 provider_init_mock(&provider, &mock_context, options.fixture, options.flight_number);
                 provider_result = provider.load(provider.context, &flight, time(NULL));
+                collect_history(&history, &options, &live_context, &flight);
+                redraw = true;
+            } else if (action == INPUT_NEXT_VISUAL) {
+                visual_viewport_toggle(&viewport);
                 redraw = true;
             }
         }
@@ -234,6 +274,7 @@ int main(int argc, char **argv)
             animation_update(&animation, now_ms)) redraw = true;
         if (runtime_data_due(&schedule, now_ms, provider.refresh_interval_ms)) {
             provider_result = provider.refresh(provider.context, &flight, time(NULL));
+            collect_history(&history, &options, &live_context, &flight);
             if (provider_result.status != PROVIDER_OK)
                 runtime_defer_data(&schedule, now_ms, retry_delay(&provider, provider_result));
             redraw = true;

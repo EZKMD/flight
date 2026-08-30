@@ -13,13 +13,12 @@ its renderer remain the default product.
 - live, tracking, stale, scheduled, and offline semantics
 - deterministic mock fixtures and provider-safe diagnostics
 - `VisualViewport` dispatch contract
-- inactive provider-neutral `TelemetryHistory` model
+- provider-neutral, session-only observed `TelemetryHistory`
+- responsive `AltitudeProfileVisual` with CLI selection and runtime switching
 
 ## Candidate next work
 
-- `AltitudeProfileVisual` grown from telemetry collected after startup
 - `RouteMapVisual` with origin, destination, great-circle route, and aircraft
-- optional visual selection and cycling after the views are implemented
 - richer aircraft artwork selected by aircraft type and viewport tier
 
 ## Later possibilities
@@ -31,6 +30,7 @@ its renderer remain the default product.
 - gate, terminal, delay, cancellation, diversion, and route events
 - timezone displays
 - historical telemetry backfill and flight playback
+- persisted telemetry history across tracker sessions
 - saved/watchlisted flights and multiple tracked flights
 - simplified world outlines, map layers, pan/zoom, and waypoints
 - themes and configuration

@@ -23,6 +23,9 @@ typedef struct {
 
 void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
                           const TelemetryHistory *history);
+bool visual_mode_parse(const char *name, VisualMode *mode);
+const char *visual_mode_name(VisualMode mode);
+void visual_viewport_toggle(VisualViewport *viewport);
 void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
                             const FlightState *flight, const AnimationState *animation,
                             const Layout *layout);

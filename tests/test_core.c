@@ -1,8 +1,10 @@
+#include "altitude_profile.h"
 #include "airport_reference.h"
 #include "flight_candidate.h"
 #include "flight_designator.h"
 #include "geospatial_progress.h"
 #include "json.h"
+#include "input.h"
 #include "normalizer.h"
 #include "provider.h"
 #include "telemetry_provider.h"
@@ -428,45 +430,250 @@ static void test_telemetry_history_model(void)
 {
     TelemetryHistory history;
     TelemetrySample sample;
+    AltitudeProfilePlot plot;
     FlightState state;
     size_t index;
     mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
     telemetry_history_init(&history);
+    telemetry_history_set_interval(&history, 15U);
+    assert(history.expected_interval_seconds == 15U);
     assert(telemetry_sample_from_flight(&state, &sample));
     assert(sample.timestamp.value == test_now - 3);
     assert(sample.altitude_feet.available && sample.altitude_feet.value == 38000);
     for (index = 0; index < TELEMETRY_HISTORY_CAPACITY + 2U; index++) {
         sample.timestamp.value = (time_t)index;
-        telemetry_history_append(&history, &sample);
+        assert(telemetry_history_append(&history, &sample));
     }
     assert(history.count == TELEMETRY_HISTORY_CAPACITY);
     assert(telemetry_history_at(&history, 0)->timestamp.value == 2);
     assert(telemetry_history_at(&history, TELEMETRY_HISTORY_CAPACITY - 1U)->timestamp.value ==
            (time_t)(TELEMETRY_HISTORY_CAPACITY + 1U));
     assert(telemetry_history_at(&history, TELEMETRY_HISTORY_CAPACITY) == NULL);
+    assert(altitude_profile_build(&history, 80, 10, &plot));
+    assert(plot.plotted_samples == TELEMETRY_HISTORY_CAPACITY);
+    assert(plot.cells[0][plot.width - 1] == ALTITUDE_CELL_CURRENT ||
+           plot.cells[1][plot.width - 1] == ALTITUDE_CELL_CURRENT);
     state.metadata.telemetry_updated.available = false;
     assert(!telemetry_sample_from_flight(&state, &sample));
 }
 
+static TelemetrySample altitude_sample(time_t timestamp, int altitude)
+{
+    TelemetrySample sample;
+    memset(&sample, 0, sizeof(sample));
+    sample.timestamp = (OptionalTime){ true, timestamp };
+    sample.altitude_feet = (OptionalInt){ true, altitude };
+    sample.freshness = TELEMETRY_FRESH;
+    return sample;
+}
+
+static bool frame_contains(const Frame *frame, const char *text)
+{
+    int index;
+    for (index = 0; index < frame->count; index++) {
+        if (strstr(frame->lines[index], text) != NULL) return true;
+    }
+    return false;
+}
+
+static void test_telemetry_history_acceptance_and_lifecycle(void)
+{
+    TelemetryHistory history;
+    TelemetrySample sample = altitude_sample(100, 10000);
+    FlightState state;
+    telemetry_history_init(&history);
+    assert(telemetry_history_set_occurrence(&history, "occurrence-a|leg-a"));
+    assert(!telemetry_history_set_occurrence(&history, "occurrence-a|leg-a"));
+    assert(telemetry_history_append(&history, &sample));
+    assert(history.maximum_altitude_feet == 10000);
+    assert(!telemetry_history_append(&history, &sample));
+    sample.timestamp.value = 99;
+    assert(!telemetry_history_append(&history, &sample));
+    sample.timestamp.value = 101;
+    assert(telemetry_history_append(&history, &sample));
+    sample.timestamp.value = 102;
+    sample.freshness = TELEMETRY_STALE;
+    assert(!telemetry_history_append(&history, &sample));
+    assert(history.count == 2U);
+
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    telemetry_history_init(&history);
+    assert(telemetry_history_observe(&history, "occurrence-a|leg-a", &state));
+    assert(!telemetry_history_observe(&history, "occurrence-a|leg-a", &state));
+    state.metadata.telemetry_updated.value++;
+    state.status.telemetry_state = TELEMETRY_STALE;
+    assert(!telemetry_history_observe(&history, "occurrence-a|leg-a", &state));
+    assert(history.count == 1U);
+    assert(!telemetry_history_observe(&history, "occurrence-b|leg-b", &state));
+    assert(history.count == 0U);
+    assert(history.maximum_altitude_feet == 0);
+    assert(strcmp(history.occurrence_id, "occurrence-b|leg-b") == 0);
+    state.status.telemetry_state = TELEMETRY_FRESH;
+    assert(telemetry_history_observe(&history, "occurrence-b|leg-b", &state));
+    assert(history.count == 1U);
+}
+
+static void test_altitude_profile_math(void)
+{
+    assert(altitude_profile_map_time(100, 100, 200, 11) == 0);
+    assert(altitude_profile_map_time(150, 100, 200, 11) == 5);
+    assert(altitude_profile_map_time(200, 100, 200, 11) == 10);
+    assert(altitude_profile_map_time(100, 100, 100, 11) == 0);
+    assert(altitude_profile_map_altitude(40000, 40000, 9) == 0);
+    assert(altitude_profile_map_altitude(20000, 40000, 9) == 4);
+    assert(altitude_profile_map_altitude(0, 40000, 9) == 8);
+    assert(altitude_profile_map_altitude(-100, 40000, 9) == 8);
+    assert(altitude_profile_is_gap(100, 131, 15U));
+    assert(!altitude_profile_is_gap(100, 130, 15U));
+    assert(altitude_profile_is_gap(100, 100, 15U));
+}
+
+static void test_altitude_profile_geometry(void)
+{
+    TelemetryHistory history;
+    TelemetrySample sample;
+    AltitudeProfilePlot plot;
+    int row;
+    int column;
+    bool middle_has_line = false;
+    telemetry_history_init(&history);
+    telemetry_history_set_interval(&history, 15U);
+    assert(!altitude_profile_build(&history, 30, 8, &plot));
+
+    sample = altitude_sample(100, 0);
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 30, 8, &plot));
+    assert(plot.plotted_samples == 1U);
+    assert(plot.cells[7][0] == ALTITUDE_CELL_CURRENT);
+
+    sample = altitude_sample(115, 20000);
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(130, 40000);
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 30, 8, &plot));
+    assert(plot.width == 30 && plot.height == 8);
+    assert(plot.cells[0][29] == ALTITUDE_CELL_CURRENT);
+    for (row = 0; row < plot.height; row++) {
+        if (plot.cells[row][plot.width / 2] != ALTITUDE_CELL_EMPTY) middle_has_line = true;
+    }
+    assert(middle_has_line);
+
+    telemetry_history_init(&history);
+    telemetry_history_set_interval(&history, 15U);
+    sample = altitude_sample(100, 10000);
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(115, 0);
+    sample.altitude_feet.available = false;
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(130, 30000);
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 21, 8, &plot));
+    for (row = 0; row < plot.height; row++)
+        assert(plot.cells[row][plot.width / 2] == ALTITUDE_CELL_EMPTY);
+
+    telemetry_history_init(&history);
+    telemetry_history_set_interval(&history, 15U);
+    sample = altitude_sample(100, 10000);
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(131, 30000);
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 21, 8, &plot));
+    for (column = 1; column < plot.width - 1; column++) {
+        for (row = 0; row < plot.height; row++)
+            assert(plot.cells[row][column] == ALTITUDE_CELL_EMPTY);
+    }
+
+    telemetry_history_init(&history);
+    sample = altitude_sample(100, 10000);
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(101, 20000);
+    assert(telemetry_history_append(&history, &sample));
+    sample = altitude_sample(102, 30000);
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 2, 8, &plot));
+    assert(plot.width == 2 && plot.plotted_samples == 3U);
+
+    sample = altitude_sample(103, 0);
+    sample.altitude_feet.available = false;
+    assert(telemetry_history_append(&history, &sample));
+    assert(altitude_profile_build(&history, 2, 8, &plot));
+    for (row = 0; row < plot.height; row++) {
+        for (column = 0; column < plot.width; column++)
+            assert(plot.cells[row][column] != ALTITUDE_CELL_CURRENT);
+    }
+}
+
+static void test_altitude_profile_render_states(void)
+{
+    TelemetryHistory history;
+    TelemetrySample sample;
+    FlightState state;
+    AnimationState animation;
+    Layout layout;
+    Frame frame;
+    bool found_marker = false;
+    int index;
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    memset(&animation, 0, sizeof(animation));
+    layout = layout_select((TerminalSize){ 100, 28 });
+    telemetry_history_init(&history);
+    frame_init(&frame, layout.content_width);
+    altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);
+    assert(frame_contains(&frame, "WAITING FOR LIVE TELEMETRY"));
+    sample = altitude_sample(100, 10000);
+    assert(telemetry_history_append(&history, &sample));
+    frame_init(&frame, layout.content_width);
+    altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);
+    assert(frame_contains(&frame, "TRACKING STARTED"));
+    sample = altitude_sample(115, 20000);
+    assert(telemetry_history_append(&history, &sample));
+    frame_init(&frame, layout.content_width);
+    altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);
+    for (index = 0; index < frame.count; index++) {
+        if (strstr(frame.lines[index], "✈") != NULL) found_marker = true;
+    }
+    assert(found_marker);
+    layout = layout_select((TerminalSize){ 45, 20 });
+    frame_init(&frame, layout.content_width);
+    altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);
+    assert(frame_contains(&frame, "REQUIRES MORE SPACE"));
+}
+
 static void test_visual_mode_contract(void)
 {
+    TelemetryHistory history;
     VisualViewport viewport;
     FlightState state;
     AnimationState animation;
     Layout layout;
     Frame frame;
-    visual_viewport_init(&viewport, VISUAL_AIRCRAFT, NULL);
+    telemetry_history_init(&history);
+    visual_viewport_init(&viewport, VISUAL_AIRCRAFT, &history);
     assert(viewport.mode == VISUAL_AIRCRAFT);
-    assert(viewport.history == NULL);
+    assert(viewport.history == &history);
     assert(VISUAL_ALTITUDE_PROFILE != VISUAL_ROUTE_MAP);
     assert(VISUAL_RADAR != VISUAL_MINIMAL);
+    assert(visual_mode_parse("aircraft", &viewport.mode));
+    assert(viewport.mode == VISUAL_AIRCRAFT);
+    assert(visual_mode_parse("altitude", &viewport.mode));
+    assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
+    assert(!visual_mode_parse("radar", &viewport.mode));
+    assert(!visual_mode_parse("minimal", &viewport.mode));
+    assert(strcmp(visual_mode_name(VISUAL_ALTITUDE_PROFILE), "altitude") == 0);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_AIRCRAFT);
+    assert(viewport.history == &history);
+    assert(input_action_for_key('q') == INPUT_QUIT);
+    assert(input_action_for_key('r') == INPUT_REFRESH);
+    assert(input_action_for_key('f') == INPUT_NEXT_FIXTURE);
+    assert(input_action_for_key('v') == INPUT_NEXT_VISUAL);
     memset(&state, 0, sizeof(state));
     memset(&animation, 0, sizeof(animation));
     memset(&layout, 0, sizeof(layout));
     frame_init(&frame, 80);
     visual_viewport_init(&viewport, VISUAL_ALTITUDE_PROFILE, NULL);
     visual_viewport_render(&viewport, &frame, &state, &animation, &layout);
-    assert(frame.count == 2);
+    assert(frame.count >= 2);
     assert(strstr(frame.lines[0], "ALTITUDE PROFILE") != NULL);
     frame_init(&frame, 80);
     visual_viewport_init(&viewport, VISUAL_ROUTE_MAP, NULL);
@@ -499,6 +706,10 @@ int main(void)
     test_diagnostics();
     test_all_mock_fixtures();
     test_telemetry_history_model();
+    test_telemetry_history_acceptance_and_lifecycle();
+    test_altitude_profile_math();
+    test_altitude_profile_geometry();
+    test_altitude_profile_render_states();
     test_visual_mode_contract();
     (void)puts("data semantics tests passed");
     return 0;

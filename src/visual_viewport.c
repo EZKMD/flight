@@ -1,13 +1,36 @@
 #include "visual_viewport.h"
 
 #include "aircraft_visual.h"
+#include "altitude_profile.h"
 #include "future_visuals.h"
+
+#include <string.h>
 
 void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
                           const TelemetryHistory *history)
 {
     viewport->mode = mode;
     viewport->history = history;
+}
+
+bool visual_mode_parse(const char *name, VisualMode *mode)
+{
+    if (strcmp(name, "aircraft") == 0) *mode = VISUAL_AIRCRAFT;
+    else if (strcmp(name, "altitude") == 0) *mode = VISUAL_ALTITUDE_PROFILE;
+    else return false;
+    return true;
+}
+
+const char *visual_mode_name(VisualMode mode)
+{
+    if (mode == VISUAL_ALTITUDE_PROFILE) return "altitude";
+    return "aircraft";
+}
+
+void visual_viewport_toggle(VisualViewport *viewport)
+{
+    viewport->mode = viewport->mode == VISUAL_AIRCRAFT ?
+                     VISUAL_ALTITUDE_PROFILE : VISUAL_AIRCRAFT;
 }
 
 void visual_viewport_render(const VisualViewport *viewport, Frame *frame,

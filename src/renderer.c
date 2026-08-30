@@ -44,6 +44,8 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
     frame_init(&frame, layout->content_width);
 
     if (layout->terminal_too_small) build_too_small(&frame);
+    else if (viewport->mode == VISUAL_ALTITUDE_PROFILE)
+        visual_viewport_render(viewport, &frame, flight, animation, layout);
     else if (layout->mode == LAYOUT_TINY || layout->height < 13)
         compact_summary_render(&frame, flight, animation, now);
     else build_full(&frame, flight, animation, layout, viewport, now);

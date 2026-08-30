@@ -7,9 +7,6 @@
 #include "layout.h"
 #include "telemetry_history.h"
 
-void altitude_profile_visual_render(Frame *frame, const FlightState *flight,
-                                    const TelemetryHistory *history,
-                                    const AnimationState *animation, const Layout *layout);
 void route_map_visual_render(Frame *frame, const FlightState *flight,
                              const TelemetryHistory *history,
                              const AnimationState *animation, const Layout *layout);

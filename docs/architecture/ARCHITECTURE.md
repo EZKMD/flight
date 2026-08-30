@@ -15,12 +15,18 @@ Mock mode bypasses resolver and telemetry interfaces: `MockDataProvider` writes 
 The main loop sleeps for 50 ms between iterations and independently checks:
 
 - terminal resize signals, which recalculate `Layout` and request redraw;
-- non-blocking keyboard input (`q` quit, `r` refresh, `f` next fixture in mock mode);
+- non-blocking keyboard input (`q` quit, `r` refresh, `v` switch visual, `f` next fixture in mock mode);
 - animation every 100 ms, which mutates only `AnimationState`;
 - periodic rendering every 1 second;
 - provider refresh at 300 seconds for live mode or 15 seconds for mock mode.
 
 Manual `r` and the provider deadline are the only ordinary refresh triggers. Animation, layout selection, resize handling, and rendering do not call provider functions or initiate HTTP requests. Failures defer data refresh by status: rate-limit retry advice, 60 seconds for timeout/unavailable, and one hour for authentication or missing API key.
+
+After each provider load or refresh, the runtime may append the accepted fresh
+normalized observation to `TelemetryHistory`. Duplicate, out-of-order, stale,
+and missing observations do not create repeated points. Collection never calls
+a provider and uses the provider's existing refresh interval to define graph
+gap semantics.
 
 ## FlightState
 
@@ -55,7 +61,7 @@ FlightState + AnimationState + Layout
           |                    |
   screen_components      VisualViewport
                                |
-                        AircraftVisual
+                 AircraftVisual / AltitudeProfileVisual
                                |
                               Frame
                                |
@@ -92,7 +98,9 @@ main.c
 └── renderer.c
     ├── layout.c
     ├── screen_components.c
-    ├── visual_viewport.c ── aircraft_visual.c ── artwork.c
+    ├── visual_viewport.c
+    │   ├── aircraft_visual.c ── artwork.c
+    │   └── altitude_profile.c ← telemetry_history.c
     └── frame.c ── terminal output
 ```
 
@@ -103,23 +111,25 @@ airport-board application mode. Airport mode is not CLI-reachable and has no
 provider or renderer. Its lightweight `AirportBoardState` contract is explicitly
 separate from `FlightState`.
 
-`VisualViewport` has dispatch identifiers for the implemented `AircraftVisual`
-and four internal, CLI-inaccessible placeholders. All represent one
-`FlightState`; airport board is not a visual mode.
+`VisualViewport` dispatches the implemented `AircraftVisual` and
+`AltitudeProfileVisual`; three other identifiers remain internal,
+CLI-inaccessible placeholders. All represent one `FlightState`; airport board
+is not a visual mode.
 
 ```text
 VisualViewport
 ├── AircraftVisual (implemented and default)
-├── AltitudeProfileVisual (placeholder)
+├── AltitudeProfileVisual (implemented and optional)
 ├── RouteMapVisual (placeholder)
 ├── RadarVisual (placeholder)
 └── MinimalVisual (placeholder)
 ```
 
-`TelemetryHistory` is a provider-neutral bounded ring-buffer model. It can derive
-a normalized sample from `FlightState`, but collection is deliberately not wired
-into the V0.1 runtime. This avoids changing refresh or memory behavior before a
-real history consumer exists.
+`TelemetryHistory` is a provider-neutral bounded ring buffer of authoritative
+observations accepted during the current process session. It belongs to one
+resolved occurrence/leg, resets when that identity changes, and remains intact
+when the visual changes. It is not a second source of current flight truth and
+does not persist or backfill observations.
 
-See `docs/future-features.md` for documentation-only directions. Stub visuals do
-not have public CLI controls and make no provider calls.
+See `docs/future-features.md` for documentation-only directions. Remaining stub
+visuals do not have public CLI controls and no visual makes provider calls.

@@ -118,6 +118,7 @@ project commercially.
 ./flight QF9 --date YYYY-MM-DD
 ./flight QF1 --debug-provider
 ./flight QF9 --view aircraft
+./flight BA281 --view altitude
 ./flight --help
 ./flight --version
 ```
@@ -130,7 +131,28 @@ Keyboard controls:
 
 - `q` — quit
 - `r` — refresh the active provider
+- `v` — switch between aircraft and altitude views
 - `f` — cycle fixtures in fixture mode only
+
+## Altitude profile
+
+The optional altitude view plots authoritative altitude observations collected
+after this tracker session starts:
+
+```sh
+./flight BA281 --view altitude
+```
+
+History is session-only: it is not loaded from earlier runs, persisted to disk,
+or backfilled to departure. Starting halfway through a flight therefore starts
+the profile halfway through that flight. Missing or stale OpenSky observations
+do not create synthetic points, and longer ADS-B coverage outages appear as
+visible gaps. A missing ICAO24 or unavailable OpenSky match leaves the view
+waiting honestly for telemetry.
+
+The altitude view needs no additional API key beyond the existing live setup
+and does not change provider polling cadence. Pressing `v` switches views
+without clearing collected history or triggering a provider request.
 
 ## Offline fixtures
 
@@ -205,6 +227,8 @@ Validated/scored occurrence and physical leg
 ResolvedFlight ─────────────────────┐
                                     ├─→ Normalizer ─→ FlightState ─→ Renderer
 OpenSkyTelemetry → TelemetrySnapshot┘
+                         ↓ accepted fresh observation
+                  TelemetryHistory → AltitudeProfileVisual
 
 MockDataProvider ─────────────────────→ FlightState ─→ Renderer
 ```
@@ -215,8 +239,8 @@ for six hours under `$XDG_CACHE_HOME/flight`, or `~/.cache/flight`; a bounded
 stale metadata fallback may be used after resolver failure.
 
 Airport codes and coordinates come from a generated static OurAirports snapshot
-documented in `data/README.md`. Future visual and airport-mode contracts are
-inactive placeholders and do not alter the V0.1 runtime.
+documented in `data/README.md`. Route map, radar, minimal visual, and airport-mode
+contracts remain inactive placeholders.
 
 ## Known limitations
 
@@ -230,10 +254,9 @@ inactive placeholders and do not alter the V0.1 runtime.
   provider status near or after scheduled arrival.
 - Provider-confirmed `AIRBORNE` is less precise than telemetry-derived phases.
 - Airport reference data is a generated static snapshot and can become outdated.
-- There is no historical telemetry backfill or runtime TelemetryHistory
-  persistence/collection yet.
-- Altitude profile, route map, radar, and minimal visual modes are internal
-  placeholders only and are not CLI-reachable.
+- Altitude history begins at process startup and is not persisted or backfilled.
+- Route map, radar, and minimal visual modes remain internal placeholders and
+  are not CLI-reachable.
 - Airport board mode is modeled separately but not implemented.
 
 ## Release and development documentation
