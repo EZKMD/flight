@@ -4,6 +4,8 @@
 </p>
 
 
+[![CI](https://github.com/EZKMD/flight/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EZKMD/flight/actions/workflows/ci.yml)
+
 `flight` is a minimalist live flight tracker for macOS and Linux terminals.
 Give it a commercial flight designator and it renders a responsive, animated
 ASCII dashboard:
@@ -36,6 +38,10 @@ make test
 ```
 
 Strict warnings are enabled by default. The local executable is `./flight`.
+
+Pushes and pull requests to `main` are automatically built and tested on macOS
+and Linux. CI runs only the deterministic offline test suite and non-interactive
+CLI smoke checks; it does not require provider credentials or call live APIs.
 
 An optional conventional installation target is available:
 
