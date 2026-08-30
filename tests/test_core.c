@@ -615,6 +615,7 @@ static void test_altitude_profile_render_states(void)
     int index;
     mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
     memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
     layout = layout_select((TerminalSize){ 100, 28 });
     telemetry_history_init(&history);
     frame_init(&frame, layout.content_width);
@@ -633,6 +634,10 @@ static void test_altitude_profile_render_states(void)
         if (strstr(frame.lines[index], "✈") != NULL) found_marker = true;
     }
     assert(found_marker);
+    animation.heartbeat = "·";
+    frame_init(&frame, layout.content_width);
+    altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);
+    assert(!frame_contains(&frame, "✈"));
     layout = layout_select((TerminalSize){ 45, 20 });
     frame_init(&frame, layout.content_width);
     altitude_profile_visual_render(&frame, &state, &history, &animation, &layout);

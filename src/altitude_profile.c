@@ -148,14 +148,14 @@ bool altitude_profile_build(const TelemetryHistory *history, int width, int heig
     return plot->plotted_samples > 0U;
 }
 
-static const char *cell_text(AltitudeProfileCell cell)
+static const char *cell_text(AltitudeProfileCell cell, bool show_aircraft)
 {
     switch (cell) {
         case ALTITUDE_CELL_HORIZONTAL: return "─";
         case ALTITUDE_CELL_VERTICAL: return "│";
         case ALTITUDE_CELL_CROSS: return "┼";
         case ALTITUDE_CELL_POINT: return "·";
-        case ALTITUDE_CELL_CURRENT: return "✈";
+        case ALTITUDE_CELL_CURRENT: return show_aircraft ? "✈" : "─";
         case ALTITUDE_CELL_EMPTY: return " ";
     }
     return " ";
@@ -200,8 +200,11 @@ static const char *empty_message(const FlightState *flight)
     return "WAITING FOR LIVE TELEMETRY";
 }
 
-static void render_plot(Frame *frame, const AltitudeProfilePlot *plot)
+static void render_plot(Frame *frame, const AltitudeProfilePlot *plot,
+                        const AnimationState *animation)
 {
+    bool show_aircraft = animation != NULL && animation->heartbeat != NULL &&
+                         strcmp(animation->heartbeat, "•") == 0;
     int row;
     for (row = 0; row < plot->height; row++) {
         char line[FRAME_LINE_CAPACITY] = "";
@@ -215,7 +218,8 @@ static void render_plot(Frame *frame, const AltitudeProfilePlot *plot)
         } else append_text(line, sizeof(line), "      ");
         append_text(line, sizeof(line), "│ ");
         for (column = 0; column < plot->width; column++)
-            append_text(line, sizeof(line), cell_text(plot->cells[row][column]));
+            append_text(line, sizeof(line),
+                        cell_text(plot->cells[row][column], show_aircraft));
         frame_add(frame, line);
     }
     frame_sides(frame, "        TRACKING START", "NOW");
@@ -265,7 +269,7 @@ void altitude_profile_visual_render(Frame *frame, const FlightState *flight,
         data_freshness_render(frame, flight, animation, time(NULL));
         return;
     }
-    render_plot(frame, &plot);
+    render_plot(frame, &plot, animation);
     frame_blank(frame);
     data_freshness_render(frame, flight, animation, time(NULL));
 }
