@@ -1,4 +1,8 @@
 # flight
+<p align="center">
+    <img width="908" height="550" alt="recording2" src="https://github.com/user-attachments/assets/d204df5e-9c08-4fff-b212-bf6d95729429" />
+</p>
+
 
 `flight` is a minimalist live flight tracker for macOS and Linux terminals.
 Give it a commercial flight designator and it renders a responsive, animated
