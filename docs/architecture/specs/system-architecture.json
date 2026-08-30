@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": { "title": "Flight Tracker System Architecture", "quality_profile": "showcase", "viewBox": [1500, 850] },
+  "components": [
+    { "id": "airlabs", "type": "external", "label": "AirLabsResolver", "pos": [40, 90], "size": [180, 72] },
+    { "id": "opensky", "type": "external", "label": "OpenSkyTelemetry", "pos": [40, 310], "size": [180, 72] },
+    { "id": "mock", "type": "backend", "label": "MockDataProvider", "pos": [40, 530], "size": [180, 72] },
+    { "id": "provider", "type": "backend", "label": "Provider Orchestration", "pos": [300, 310], "size": [190, 72] },
+    { "id": "support", "type": "cloud", "label": "HTTP + JSON + Cache", "pos": [300, 90], "size": [190, 72] },
+    { "id": "normalizer", "type": "backend", "label": "Normalizer", "pos": [570, 310], "size": [170, 72] },
+    { "id": "state", "type": "database", "label": "FlightState", "pos": [820, 310], "size": [170, 72] },
+    { "id": "renderer", "type": "frontend", "label": "Renderer + Layout", "pos": [1070, 310], "size": [180, 72] },
+    { "id": "viewport", "type": "frontend", "label": "VisualViewport", "pos": [1070, 530], "size": [180, 72] },
+    { "id": "terminal", "type": "external", "label": "Terminal Output", "pos": [1320, 310], "size": [150, 72] }
+  ],
+  "connections": [
+    { "id": "airlabs-provider", "from": "airlabs", "to": "provider", "label": "ResolvedFlight", "variant": "emphasis", "labelAt": [260, 190] },
+    { "id": "opensky-provider", "from": "opensky", "to": "provider", "label": "TelemetrySnapshot", "variant": "emphasis", "labelAt": [260, 400] },
+    { "id": "provider-support", "from": "provider", "to": "support", "label": "transport + cache", "variant": "dashed", "labelAt": [410, 220] },
+    { "id": "provider-normalizer", "from": "provider", "to": "normalizer", "variant": "emphasis" },
+    { "id": "normalizer-state", "from": "normalizer", "to": "state", "variant": "emphasis" },
+    { "id": "mock-state", "from": "mock", "to": "state", "label": "FlightState", "variant": "dashed", "labelAt": [600, 610] },
+    { "id": "state-renderer", "from": "state", "to": "renderer", "variant": "emphasis" },
+    { "id": "renderer-viewport", "from": "renderer", "to": "viewport", "label": "viewport bounds", "labelAt": [1160, 465] },
+    { "id": "viewport-terminal", "from": "viewport", "to": "terminal", "label": "frame canvas", "labelAt": [1300, 610] },
+    { "id": "renderer-terminal", "from": "renderer", "to": "terminal", "label": "screen frame", "variant": "emphasis", "labelAt": [1285, 285] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Provider abstraction", "items": ["FlightResolver yields ResolvedFlight", "TelemetryProvider yields TelemetrySnapshot", "ProviderResult carries status and diagnostics"] },
+    { "dot": "emerald", "title": "Rendering boundary", "items": ["Renderer consumes FlightState, Layout, AnimationState, and VisualViewport", "VisualViewport currently delegates only AircraftVisual into Frame"] },
+    { "dot": "amber", "title": "Runtime isolation", "items": ["Archify files live only under docs/architecture", "No documentation code is linked into the C program"] }
+  ]
+}

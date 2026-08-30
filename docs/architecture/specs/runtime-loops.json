@@ -1,0 +1,38 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "Runtime and Update Loops", "quality_profile": "showcase" },
+  "lanes": [
+    { "id": "events", "label": "Terminal events" },
+    { "id": "runtime", "label": "Runtime scheduler" },
+    { "id": "data", "label": "Provider and cache" },
+    { "id": "display", "label": "Animation and rendering" }
+  ],
+  "mainPath": ["poll", "resize", "input", "schedule", "render", "sleep"],
+  "nodes": [
+    { "id": "poll", "lane": "events", "col": 0, "type": "frontend", "label": "Poll terminal", "sublabel": "resize + key input" },
+    { "id": "resize", "lane": "events", "col": 1, "type": "frontend", "label": "Handle resize", "sublabel": "reselect layout" },
+    { "id": "input", "lane": "events", "col": 2, "type": "frontend", "label": "Handle input", "sublabel": "q / r / f" },
+    { "id": "schedule", "lane": "runtime", "col": 3, "type": "backend", "label": "Deadlines", "sublabel": "100 ms / 1 s / provider", "width": 120 },
+    { "id": "refresh", "lane": "data", "col": 4, "type": "cloud", "label": "Data refresh", "sublabel": "live: OpenSky only", "width": 120 },
+    { "id": "cache", "lane": "data", "col": 1, "type": "database", "label": "Resolver cache", "sublabel": "initial load only" },
+    { "id": "animate", "lane": "display", "col": 4, "type": "frontend", "label": "Animation tick", "sublabel": "local state only" },
+    { "id": "render", "lane": "display", "col": 5, "type": "frontend", "label": "Render frame", "sublabel": "no API request" },
+    { "id": "sleep", "lane": "runtime", "col": 5, "type": "backend", "label": "Sleep 50 ms", "sublabel": "repeat loop" }
+  ],
+  "edges": [
+    { "id": "poll-resize", "from": "poll", "to": "resize" },
+    { "id": "resize-input", "from": "resize", "to": "input" },
+    { "id": "input-schedule", "from": "input", "to": "schedule" },
+    { "id": "schedule-render", "from": "schedule", "to": "render", "label": "1 s or redraw", "variant": "default" },
+    { "id": "schedule-refresh", "from": "schedule", "to": "refresh", "label": "data deadline or r", "variant": "emphasis" },
+    { "id": "schedule-animate", "from": "schedule", "to": "animate", "label": "100 ms", "variant": "dashed" },
+    { "id": "animate-render", "from": "animate", "to": "render", "variant": "dashed" },
+    { "id": "refresh-render", "from": "refresh", "to": "render", "variant": "emphasis" },
+    { "id": "render-sleep", "from": "render", "to": "sleep" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Independent clocks", "items": ["Animation: 100 ms; render: 1 s", "Live provider: 300 s; mock provider: 15 s"] },
+    { "dot": "rose", "title": "Network boundary", "items": ["Only provider load/refresh performs network work", "Animation, resize, and rendering never request APIs"] }
+  ]
+}

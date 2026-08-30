@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": { "title": "Flight Phase Derivation", "quality_profile": "showcase", "viewBox": [900, 820] },
+  "lanes": [{ "id": "main", "label": "Journey phases" }, { "id": "detail", "label": "Telemetry refinements" }, { "id": "fallback", "label": "Provider and fallback outcomes" }],
+  "states": [
+    { "id": "scheduled", "type": "start", "label": "Scheduled", "sublabel": "future departure", "lane": "main", "col": 0 },
+    { "id": "boarding", "type": "waiting", "label": "Boarding", "sublabel": "pre-departure", "lane": "main", "col": 1 },
+    { "id": "airborne", "type": "active", "label": "Airborne", "sublabel": "active flight", "lane": "main", "col": 2 },
+    { "id": "descending", "type": "active", "label": "Descending", "sublabel": "rate < -300 fpm", "lane": "main", "col": 3 },
+    { "id": "landed", "type": "success", "label": "Landed", "sublabel": "arrival confirmed", "lane": "main", "col": 4 },
+    { "id": "taxiing", "type": "active", "label": "Taxiing", "sublabel": "on ground + moving", "lane": "detail", "col": 0 },
+    { "id": "climbing", "type": "active", "label": "Climbing", "sublabel": "rate > 300 fpm", "lane": "detail", "col": 1 },
+    { "id": "cruising", "type": "active", "label": "Cruising", "sublabel": "level + rate known", "lane": "detail", "col": 2 },
+    { "id": "delayed", "type": "failure", "label": "Delayed", "sublabel": "before departure", "lane": "fallback", "col": 0, "yOffset": 90 },
+    { "id": "unavailable", "type": "failure", "label": "Unavailable", "sublabel": "phase cannot be derived", "lane": "fallback", "col": 2, "yOffset": 90 }
+  ],
+  "transitions": [
+    { "id": "scheduled-boarding", "from": "scheduled", "to": "boarding", "route": "straight" }, { "id": "boarding-airborne", "from": "boarding", "to": "airborne", "route": "straight" },
+    { "id": "airborne-descending", "from": "airborne", "to": "descending", "route": "straight" }, { "id": "descending-landed", "from": "descending", "to": "landed", "route": "straight" },
+    { "id": "boarding-taxiing", "from": "boarding", "to": "taxiing", "variant": "dashed", "route": "drop" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Provider-derived", "items": ["landed or actual arrival -> Landed", "delay before departure -> Delayed", "active/en-route -> Airborne", "future departure -> Scheduled or Boarding within two hours"] },
+    { "dot": "emerald", "title": "Fresh telemetry refines phase", "items": ["On ground becomes Boarding or Taxiing", "Vertical rate chooses Climbing or Descending", "Known flight level and vertical rate can yield Cruising"] },
+    { "dot": "amber", "title": "Recomputed state", "items": ["This is derivation logic, not a stored transition engine", "Unavailable is used when observations cannot establish a phase"] }
+  ]
+}

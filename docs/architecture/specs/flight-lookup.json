@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": { "title": "./flight QF9 Lookup and Render Sequence", "quality_profile": "showcase", "column_fit": "spread", "viewBox": [1052, 1100] },
+  "participants": [
+    { "id": "user", "type": "external", "label": "User" },
+    { "id": "main", "type": "frontend", "label": "main.c", "sublabel": "CLI + loop" },
+    { "id": "provider", "type": "backend", "label": "provider.c", "sublabel": "orchestration" },
+    { "id": "cache", "type": "database", "label": "cache.c" },
+    { "id": "airlabs", "type": "cloud", "label": "AirLabs", "sublabel": "resolver" },
+    { "id": "opensky", "type": "cloud", "label": "OpenSky", "sublabel": "telemetry" },
+    { "id": "normalizer", "type": "backend", "label": "Normalizer" },
+    { "id": "state", "type": "database", "label": "FlightState" },
+    { "id": "renderer", "type": "frontend", "label": "Renderer" }
+  ],
+  "segments": [
+    { "from": 150, "to": 440, "label": "Resolve occurrence" },
+    { "from": 460, "to": 770, "label": "Acquire and merge telemetry" },
+    { "from": 790, "to": 990, "label": "Derive and render" }
+  ],
+  "messages": [
+    { "id": "launch", "from": "user", "to": "main", "y": 190, "label": "./flight QF9", "variant": "emphasis" },
+    { "id": "load", "from": "main", "to": "provider", "y": 240, "label": "load(QF9, date=empty)" },
+    { "id": "cache-read", "from": "provider", "to": "cache", "y": 290, "label": "load ResolvedFlight (6 h TTL)" },
+    { "id": "resolve", "from": "provider", "to": "airlabs", "y": 350, "label": "resolve commercial flight on miss", "variant": "emphasis" },
+    { "id": "resolved", "from": "airlabs", "to": "provider", "y": 410, "label": "select occurrence / leg -> ResolvedFlight", "variant": "return" },
+    { "id": "normalize-resolved", "from": "provider", "to": "normalizer", "y": 485, "label": "normalizer_from_resolved" },
+    { "id": "base-state", "from": "normalizer", "to": "state", "y": 535, "label": "identity, route, timing, provider phase" },
+    { "id": "telemetry-request", "from": "provider", "to": "opensky", "y": 600, "label": "fetch by ICAO24 (callsign retained)" , "variant": "emphasis" },
+    { "id": "snapshot", "from": "opensky", "to": "provider", "y": 655, "label": "TelemetrySnapshot", "variant": "return" },
+    { "id": "apply", "from": "provider", "to": "normalizer", "y": 710, "label": "normalizer_apply_telemetry" },
+    { "id": "merged", "from": "normalizer", "to": "state", "y": 745, "label": "position + freshness + phase + progress" },
+    { "id": "draw", "from": "main", "to": "renderer", "y": 835, "label": "renderer_draw(state, animation, layout, viewport)" },
+    { "id": "read-state", "from": "renderer", "to": "state", "y": 890, "label": "read provider-neutral model" },
+    { "id": "terminal", "from": "renderer", "to": "user", "y": 955, "label": "ANSI terminal frame", "variant": "return" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Actual fallback", "items": ["A resolver error retries cache with a 30-day stale TTL", "Without metadata, the state becomes unavailable"] },
+    { "dot": "cyan", "title": "Actual refresh", "items": ["Subsequent live refreshes reuse the selected occurrence", "Only OpenSky telemetry is fetched periodically"] }
+  ]
+}

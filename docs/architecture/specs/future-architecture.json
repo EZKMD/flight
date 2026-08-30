@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Flight Tracker Extension Boundaries",
+    "quality_profile": "showcase",
+    "viewBox": [1390, 850]
+  },
+  "components": [
+    { "id": "application", "type": "backend", "label": "Application", "sublabel": "AppMode selects experience", "tag": "IMPLEMENTED", "pos": [40, 300], "size": [170, 72] },
+    { "id": "flightProvider", "type": "backend", "label": "FlightProvider", "sublabel": "live or mock", "tag": "IMPLEMENTED", "pos": [280, 300], "size": [170, 72] },
+    { "id": "flightState", "type": "database", "label": "FlightState", "sublabel": "one resolved flight", "tag": "IMPLEMENTED", "pos": [520, 300], "size": [170, 72] },
+    { "id": "history", "type": "database", "label": "TelemetryHistory", "sublabel": "bounded model; collection off", "tag": "MODELED", "pos": [470, 500], "size": [190, 72] },
+    { "id": "viewport", "type": "frontend", "label": "VisualViewport", "sublabel": "single-flight dispatch", "tag": "IMPLEMENTED", "pos": [720, 300], "size": [180, 72] },
+    { "id": "aircraftVisual", "type": "frontend", "label": "AircraftVisual", "sublabel": "default visual", "tag": "IMPLEMENTED", "pos": [930, 180], "size": [180, 72] },
+    { "id": "futureVisuals", "type": "frontend", "label": "Future Flight Visuals", "sublabel": "profile · map · radar · minimal", "tag": "PLACEHOLDERS", "pos": [930, 420], "size": [210, 76] },
+    { "id": "terminal", "type": "external", "label": "Terminal", "sublabel": "current ANSI renderer", "tag": "IMPLEMENTED", "pos": [1180, 300], "size": [180, 72] },
+    { "id": "airportMode", "type": "backend", "label": "Airport Mode", "sublabel": "separate multi-flight path", "tag": "RESERVED", "pos": [280, 680], "size": [180, 72] },
+    { "id": "airportState", "type": "database", "label": "AirportBoardState", "sublabel": "many arrival/departure rows", "tag": "MODELED", "pos": [540, 680], "size": [200, 72] },
+    { "id": "airportRuntime", "type": "frontend", "label": "Airport Provider + Board", "sublabel": "not implemented", "tag": "PLANNED", "pos": [820, 680], "size": [210, 72] }
+  ],
+  "connections": [
+    { "id": "appFlight", "from": "application", "to": "flightProvider", "label": "APP_MODE_FLIGHT", "variant": "emphasis", "labelAt": [245, 296] },
+    { "id": "providerState", "from": "flightProvider", "to": "flightState", "label": "normalized state", "variant": "emphasis", "labelAt": [485, 386] },
+    { "id": "stateViewport", "from": "flightState", "to": "viewport", "label": "read-only", "variant": "emphasis", "labelAt": [705, 296] },
+    { "id": "viewportAircraft", "from": "viewport", "to": "aircraftVisual", "label": "default dispatch", "variant": "emphasis" },
+    { "id": "aircraftTerminal", "from": "aircraftVisual", "to": "terminal", "label": "Frame", "variant": "emphasis" },
+    { "id": "historyViewport", "from": "history", "to": "viewport", "label": "optional later", "variant": "dashed" },
+    { "id": "viewportFuture", "from": "viewport", "to": "futureVisuals", "label": "internal stubs", "variant": "dashed" },
+    { "id": "futureTerminal", "from": "futureVisuals", "to": "terminal", "label": "not CLI-reachable", "variant": "dashed" },
+    { "id": "appAirport", "from": "application", "to": "airportMode", "label": "APP_MODE_AIRPORT", "variant": "dashed" },
+    { "id": "airportModeState", "from": "airportMode", "to": "airportState", "label": "separate state", "variant": "dashed" },
+    { "id": "airportStateRuntime", "from": "airportState", "to": "airportRuntime", "label": "future contract", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Implemented now", "items": ["Single-flight provider → FlightState → AircraftVisual path", "AppMode and VisualMode contracts", "TelemetryHistory and AirportBoardState models"] },
+    { "dot": "amber", "title": "Inactive placeholders", "items": ["History collection is disabled", "Future visuals are internal stubs and have no CLI controls", "Airport mode has no provider, renderer, or API requests"] },
+    { "dot": "cyan", "title": "Hard boundary", "items": ["Every VisualMode represents one FlightState", "Airport mode represents many flights and never enters VisualViewport"] }
+  ]
+}

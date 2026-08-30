@@ -1,0 +1,12 @@
+# Build outputs
+/flight
+/tests/test_core
+*.o
+
+# Local credentials and environment
+.env
+.env.*
+
+# Platform/editor files
+.DS_Store
+*~

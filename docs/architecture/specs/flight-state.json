@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": { "title": "FlightState Structure and Provenance", "quality_profile": "showcase", "viewBox": [1068, 900] },
+  "stages": [
+    { "label": "Provider inputs" },
+    { "label": "Normalization" },
+    { "label": "FlightState areas" },
+    { "label": "Derived state" },
+    { "label": "Consumer" }
+  ],
+  "nodes": [
+    { "id": "resolved", "type": "cloud", "label": "ResolvedFlight", "stage": 0, "row": 0 },
+    { "id": "snapshot", "type": "cloud", "label": "TelemetrySnapshot", "stage": 0, "row": 3 },
+    { "id": "normalizer", "type": "backend", "label": "Normalizer", "stage": 1, "row": 1 },
+    { "id": "identity", "type": "database", "label": "Identity + Aircraft", "stage": 2, "row": 0 },
+    { "id": "airports", "type": "database", "label": "Origin + Destination", "stage": 2, "row": 2, "width": 140 },
+    { "id": "observations", "type": "database", "label": "Timing + Position", "stage": 2, "row": 4 },
+    { "id": "journey", "type": "backend", "label": "Journey + Status", "stage": 3, "row": 1 },
+    { "id": "metadata", "type": "database", "label": "Metadata", "stage": 3, "row": 4, "width": 140 },
+    { "id": "renderer", "type": "frontend", "label": "Renderer", "stage": 4, "row": 2 }
+  ],
+  "flows": [
+    { "id": "resolved-normalizer", "from": "resolved", "to": "normalizer", "label": "provider-neutral schedule data", "variant": "emphasis" },
+    { "id": "snapshot-normalizer", "from": "snapshot", "to": "normalizer", "label": "provider-neutral telemetry", "variant": "emphasis" },
+    { "id": "normalizer-identity", "from": "normalizer", "to": "identity", "label": "identity data" },
+    { "id": "normalizer-observations", "from": "normalizer", "to": "observations", "label": "timing + converted telemetry" },
+    { "id": "observations-journey", "from": "observations", "to": "journey", "label": "derived progress + phase" },
+    { "id": "journey-renderer", "from": "journey", "to": "renderer", "label": "display semantics" },
+    { "id": "metadata-renderer", "from": "metadata", "to": "renderer", "label": "freshness + provenance" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Nine top-level areas", "items": ["identity, aircraft, origin, destination, timing", "position, journey, status, metadata"] },
+    { "dot": "orange", "title": "Explicit optionality", "items": ["Measurements and timestamps use Optional* wrappers", "Sources record how progress and phase were derived"] }
+  ]
+}
