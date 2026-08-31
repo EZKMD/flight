@@ -29,6 +29,6 @@ bool geographic_map_poc_prepare(GeographicMapPocScene *scene,
                                 int columns, int rows, bool include_geography);
 void geographic_map_poc_render(Frame *frame, const FlightState *flight,
                                const AnimationState *animation,
-                               const Layout *layout);
+                               const Layout *layout, bool geography_enabled);
 
 #endif

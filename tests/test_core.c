@@ -12,6 +12,7 @@
 #include "normalizer.h"
 #include "provider.h"
 #include "route_map.h"
+#include "runtime.h"
 #include "subcell_canvas.h"
 #include "telemetry_provider.h"
 #include "telemetry_history.h"
@@ -903,35 +904,150 @@ static void test_geographic_map_poc_states(void)
     animation.heartbeat = "•";
     mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    geographic_map_poc_render(&frame, &state, &animation, &layout);
+    geographic_map_poc_render(&frame, &state, &animation, &layout, true);
     assert(frame_contains(&frame, "GEOGRAPHIC MAP POC"));
-    assert(frame_contains(&frame, "NATURAL EARTH 110M"));
+    assert(frame_contains(&frame, "GEO ON"));
     assert(frame_contains(&frame, "◆"));
     assert(frame_contains(&frame, "✈"));
 
     layout = layout_select((TerminalSize){ 100, 24 });
     frame_init(&frame, layout.content_width);
-    geographic_map_poc_render(&frame, &state, &animation, &layout);
-    assert(frame_contains(&frame, "NATURAL EARTH 110M"));
+    geographic_map_poc_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "GEO ON"));
     assert(frame_contains(&frame, "◆"));
 
     mock_provider_load(&state, FIXTURE_SCHEDULED, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    geographic_map_poc_render(&frame, &state, &animation, &layout);
+    geographic_map_poc_render(&frame, &state, &animation, &layout, true);
     assert(!frame_contains(&frame, "◆"));
     assert(!frame_contains(&frame, "✈"));
     assert(frame_contains(&frame, "NO LIVE POSITION"));
 
     mock_provider_load(&state, FIXTURE_LANDED, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    geographic_map_poc_render(&frame, &state, &animation, &layout);
+    geographic_map_poc_render(&frame, &state, &animation, &layout, true);
     assert(frame_contains(&frame, "100.0% · LANDED"));
     assert(frame_contains(&frame, "◆"));
 
     layout = layout_select((TerminalSize){ 70, 20 });
     frame_init(&frame, layout.content_width);
-    geographic_map_poc_render(&frame, &state, &animation, &layout);
+    geographic_map_poc_render(&frame, &state, &animation, &layout, true);
     assert(frame_contains(&frame, "GEOGRAPHIC MAP REQUIRES MORE SPACE"));
+    frame_init(&frame, layout.content_width);
+    geographic_map_poc_render(&frame, &state, &animation, &layout, false);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+}
+
+static int frame_style_count(const Frame *frame, FrameStyle style)
+{
+    int count = 0;
+    int row;
+    int column;
+    for (row = 0; row < frame->count; row++)
+        for (column = 0; column < frame->width; column++)
+            if (frame->styles[row][column] == style) count++;
+    return count;
+}
+
+static uint32_t frame_codepoint_at(const Frame *frame, int row, int wanted_column)
+{
+    const unsigned char *cursor = (const unsigned char *)frame->lines[row];
+    int column = 0;
+    while (*cursor != '\0' && column < wanted_column) {
+        if ((*cursor & 0x80U) == 0U) cursor += 1;
+        else if ((*cursor & 0xe0U) == 0xc0U) cursor += 2;
+        else if ((*cursor & 0xf0U) == 0xe0U) cursor += 3;
+        else cursor += 4;
+        column++;
+    }
+    if (column != wanted_column || *cursor == '\0') return 0U;
+    if ((*cursor & 0x80U) == 0U) return (uint32_t)*cursor;
+    if ((*cursor & 0xe0U) == 0xc0U)
+        return ((uint32_t)(cursor[0] & 0x1fU) << 6) |
+               (uint32_t)(cursor[1] & 0x3fU);
+    return ((uint32_t)(cursor[0] & 0x0fU) << 12) |
+           ((uint32_t)(cursor[1] & 0x3fU) << 6) |
+           (uint32_t)(cursor[2] & 0x3fU);
+}
+
+static void test_geographic_map_toggle_and_styles(void)
+{
+    FlightState state;
+    FlightState before_state;
+    AnimationState animation;
+    TelemetryHistory history;
+    RuntimeSchedule schedule;
+    RuntimeSchedule before_schedule;
+    VisualViewport viewport;
+    Layout layout = layout_select((TerminalSize){ 130, 30 });
+    Frame geography_on;
+    Frame geography_off;
+    int row;
+    int column;
+    bool saw_styled_reset = false;
+    (void)memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
+    telemetry_history_init(&history);
+    runtime_schedule_init(&schedule, 1000U);
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    before_state = state;
+    before_schedule = schedule;
+    visual_viewport_init(&viewport, VISUAL_GEOGRAPHIC_MAP_POC, &history);
+    assert(viewport.geography_enabled);
+    assert(input_action_for_key('g') == INPUT_TOGGLE_GEOGRAPHY);
+    assert(INPUT_TOGGLE_GEOGRAPHY != INPUT_REFRESH);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(!viewport.geography_enabled);
+    assert(viewport.mode == VISUAL_GEOGRAPHIC_MAP_POC);
+    assert(viewport.history == &history);
+    assert(memcmp(&state, &before_state, sizeof(state)) == 0);
+    assert(memcmp(&schedule, &before_schedule, sizeof(schedule)) == 0);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(viewport.geography_enabled);
+
+    frame_init(&geography_on, layout.content_width);
+    geographic_map_poc_render(&geography_on, &state, &animation, &layout, true);
+    frame_init(&geography_off, layout.content_width);
+    geographic_map_poc_render(&geography_off, &state, &animation, &layout, false);
+    assert(frame_contains(&geography_on, "GEO ON"));
+    assert(frame_contains(&geography_off, "GEO OFF"));
+    assert(frame_style_count(&geography_on, FRAME_STYLE_DIM) > 0);
+    assert(frame_style_count(&geography_off, FRAME_STYLE_DIM) == 0);
+    assert(frame_style_count(&geography_on, FRAME_STYLE_ACCENT) >= 2);
+    assert(frame_style_count(&geography_off, FRAME_STYLE_ACCENT) >= 2);
+    for (row = 3; row < 15; row++) {
+        char styled[FRAME_RENDERED_LINE_CAPACITY];
+        char monochrome[FRAME_RENDERED_LINE_CAPACITY];
+        assert(frame_render_line(&geography_on, row, true, styled, sizeof(styled)));
+        assert(frame_render_line(&geography_on, row, false, monochrome,
+                                 sizeof(monochrome)));
+        assert(strchr(monochrome, '\x1b') == NULL);
+        assert(strcmp(monochrome, geography_on.lines[row]) == 0);
+        if (strstr(styled, "\x1b[2m") != NULL &&
+            strstr(styled, "\x1b[0m") != NULL) saw_styled_reset = true;
+        for (column = 0; column < geography_off.width; column++) {
+            uint32_t off_glyph = frame_codepoint_at(&geography_off, row, column);
+            if (off_glyph != 0U && off_glyph != (uint32_t)' ') {
+                assert(frame_codepoint_at(&geography_on, row, column) == off_glyph);
+                assert(geography_on.styles[row][column] != FRAME_STYLE_DIM);
+                if (off_glyph == UINT32_C(0x25c6))
+                    assert(geography_on.styles[row][column] == FRAME_STYLE_ACCENT);
+            }
+        }
+    }
+    assert(saw_styled_reset);
+
+    layout = layout_select((TerminalSize){ 100, 24 });
+    frame_init(&geography_on, layout.content_width);
+    geographic_map_poc_render(&geography_on, &state, &animation, &layout, true);
+    frame_init(&geography_off, layout.content_width);
+    geographic_map_poc_render(&geography_off, &state, &animation, &layout, false);
+    assert(frame_contains(&geography_on, "GEO ON"));
+    assert(frame_contains(&geography_off, "GEO OFF"));
+
+    viewport.mode = VISUAL_AIRCRAFT;
+    assert(!visual_viewport_toggle_geography(&viewport));
+    assert(viewport.mode == VISUAL_AIRCRAFT);
 }
 
 static void test_visual_mode_contract(void)
@@ -976,6 +1092,7 @@ static void test_visual_mode_contract(void)
     assert(input_action_for_key('r') == INPUT_REFRESH);
     assert(input_action_for_key('f') == INPUT_NEXT_FIXTURE);
     assert(input_action_for_key('v') == INPUT_NEXT_VISUAL);
+    assert(input_action_for_key('g') == INPUT_TOGGLE_GEOGRAPHY);
     memset(&state, 0, sizeof(state));
     memset(&animation, 0, sizeof(animation));
     memset(&layout, 0, sizeof(layout));
@@ -989,6 +1106,7 @@ static void test_visual_mode_contract(void)
     visual_viewport_render(&viewport, &frame, &state, &animation, &layout);
     assert(strstr(frame.lines[0], "ROUTE MAP") != NULL);
     frame_init(&frame, 80);
+    layout = layout_select((TerminalSize){ 100, 24 });
     visual_viewport_init(&viewport, VISUAL_GEOGRAPHIC_MAP_POC, NULL);
     visual_viewport_render(&viewport, &frame, &state, &animation, &layout);
     assert(strstr(frame.lines[0], "GEOGRAPHIC MAP POC") != NULL);
@@ -1029,6 +1147,7 @@ int main(void)
     test_route_map_visual_states();
     test_geographic_map_poc_geometry();
     test_geographic_map_poc_states();
+    test_geographic_map_toggle_and_styles();
     test_visual_mode_contract();
     (void)puts("data semantics tests passed");
     return 0;

@@ -6,7 +6,8 @@ typedef enum {
     INPUT_QUIT,
     INPUT_REFRESH,
     INPUT_NEXT_FIXTURE,
-    INPUT_NEXT_VISUAL
+    INPUT_NEXT_VISUAL,
+    INPUT_TOGGLE_GEOGRAPHY
 } InputAction;
 
 InputAction input_action_for_key(int key);

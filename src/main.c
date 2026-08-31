@@ -61,7 +61,7 @@ static void print_usage(FILE *output, const char *program)
         "  --help              show this help\n"
         "  --version           show version\n"
         "\n"
-        "controls: q quit, r refresh, v switch view, f next fixture (fixture mode)\n"
+        "controls: q quit, r refresh, v switch view, f next fixture, g geography (geo POC)\n"
         "views: aircraft, altitude, route, geo (experimental; CLI only)\n"
         "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable\n",
         program);
@@ -267,6 +267,9 @@ int main(int argc, char **argv)
                 redraw = true;
             } else if (action == INPUT_NEXT_VISUAL) {
                 visual_viewport_toggle(&viewport);
+                redraw = true;
+            } else if (action == INPUT_TOGGLE_GEOGRAPHY &&
+                       visual_viewport_toggle_geography(&viewport)) {
                 redraw = true;
             }
         }

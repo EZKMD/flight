@@ -8,6 +8,11 @@ comprehension enough to justify a product feature. It does not replace the valid
 RouteMapVisual: `--view route` is unchanged, while the experiment is entered explicitly
 with `--view geo` and is deliberately absent from the `v` key cycle.
 
+The second POC pass adds experimental styling and a rendering-layer toggle. Press `g`
+inside `--view geo` to switch between `GEO ON` and `GEO OFF`. This does not change the
+visual mode, viewport, route geometry, provider state, telemetry history, or refresh
+schedule.
+
 ## Geography data
 
 The generated runtime artifact uses the Natural Earth **1:110m coastline**, pinned to
@@ -50,8 +55,21 @@ the route and current marker without reprojecting all 5,127 coastline points.
 
 Coastlines are unfilled, broken Braille strokes. The continuous route is rendered on a
 separate layer and wins every cell collision; `●`, `◆`, and the pulsing `✈` then win over
-both. No color is required. Wide and medium layouts are supported. Compact, tiny, or
-height-constrained terminals show `GEOGRAPHIC MAP REQUIRES MORE SPACE`.
+both. Coastline cells use standard ANSI dim, route/endpoints remain default-bright, and
+`◆`/`✈` use standard bright cyan. Glyph structure—not hue—continues to distinguish every
+layer. Styling is stored separately from glyph strings so ANSI bytes do not affect width,
+clipping, or alignment. Each styled run is reset before another layer or line is written.
+
+Set `NO_COLOR` to any value to omit all experimental SGR styling:
+
+```sh
+NO_COLOR=1 ./flight QF9 --fixture cruising --view geo
+```
+
+Wide and medium layouts support direct `g` comparisons with one stationary cached scene.
+With geography enabled, compact, tiny, or height-constrained terminals still show
+`GEOGRAPHIC MAP REQUIRES MORE SPACE`. Toggle geography off with `g` to use the existing
+responsive route-only renderer at those sizes.
 
 ## Visual inspection
 
@@ -61,6 +79,9 @@ Build and run the deterministic offline MEL–LHR case:
 make
 ./flight QF9 --fixture cruising --view geo
 ```
+
+While it is running, press `g` twice and verify that the route, endpoints, and marker stay
+fixed while only the coastline disappears and returns.
 
 Provider-backed visual candidates (availability depends on the provider resolving a
 current occurrence; none is required by the automated tests):
@@ -79,6 +100,17 @@ The existing production comparison remains:
 ./flight BA281 --view route
 ```
 
+No-position and monochrome comparisons:
+
+```sh
+./flight QF9 --fixture scheduled --view geo
+./flight QF9 --fixture unavailable --view geo
+NO_COLOR=1 ./flight BA281 --view geo
+```
+
+Resize from wide to medium to compact and back. In compact mode, press `g` to expose the
+route-only fallback. Confirm `v` still cycles only aircraft → altitude → route.
+
 Deterministic tests cover MEL–LHR, MEL–DOH, LHR–LAX, SYD–SIN, an antimeridian crossing,
 and a high-latitude route without consuming API quota.
 
@@ -86,8 +118,10 @@ and a high-latitude route without consuming API quota.
 
 - The route-local projection is coherent but increasingly distorted at high latitudes.
 - Framing is route-driven, so oceanic routes may contain little recognizable coastline.
-- At terminal resolution, even 1:110m coastline linework can compete with the route.
-- Coastline strokes cannot be independently dimmed in the current plain frame model.
+- At terminal resolution, even dim 1:110m coastline linework can remain busy on long-haul
+  views, although hierarchy is substantially clearer than in the monochrome first pass.
+- ANSI dim and bright cyan are conservative SGR assumptions, but exact intensity varies by
+  terminal theme; `NO_COLOR` preserves the structural monochrome treatment.
 - There are no country borders, filled land, labels, pan, zoom, trail, weather, traffic,
   waypoints, or additional map providers.
 - The experiment is intentionally not advertised in the normal README workflow.
@@ -99,3 +133,8 @@ comprehension while the route remains dominant and the interface still feels min
 Defer or discard if the coastline is noisy, misleading, visually stronger than the route,
 or not valuable enough to justify the data and rendering complexity. A clean build alone
 is not evidence that this belongs in the released product.
+
+Current implementation assessment: styling makes the route and authoritative marker much
+easier to separate from geography, and the stationary `g` comparison is useful. Short/local
+routes remain the strongest case. Long-haul maps are improved but can still be dense. The
+recommended status remains experimental pending direct product-design review.

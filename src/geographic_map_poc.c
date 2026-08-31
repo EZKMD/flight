@@ -2,6 +2,7 @@
 
 #include "coastline_data.h"
 #include "map_raster.h"
+#include "route_map.h"
 #include "screen_components.h"
 
 #include <math.h>
@@ -171,7 +172,7 @@ static void render_status(Frame *frame, const FlightState *flight, bool live_mar
 
 void geographic_map_poc_render(Frame *frame, const FlightState *flight,
                                const AnimationState *animation,
-                               const Layout *layout)
+                               const Layout *layout, bool geography_enabled)
 {
     GeoCoordinate origin;
     GeoCoordinate destination;
@@ -185,15 +186,19 @@ void geographic_map_poc_render(Frame *frame, const FlightState *flight,
     int rows;
     int row;
     int column;
-    render_heading(frame, flight);
-    frame_blank(frame);
     if (layout->mode == LAYOUT_COMPACT || layout->mode == LAYOUT_TINY ||
         layout->height < 14) {
+        if (!geography_enabled) {
+            route_map_visual_render(frame, flight, animation, layout);
+            return;
+        }
         frame_center(frame, "GEOGRAPHIC MAP REQUIRES MORE SPACE", 0);
         frame_blank(frame);
         data_freshness_render(frame, flight, animation, time(NULL));
         return;
     }
+    render_heading(frame, flight);
+    frame_blank(frame);
     if (!coordinates_from_flight(flight, &origin, &destination)) {
         frame_center(frame, "ROUTE GEOMETRY UNAVAILABLE", 0);
         return;
@@ -221,22 +226,34 @@ void geographic_map_poc_render(Frame *frame, const FlightState *flight,
     if (!map_raster_render(&raster, MAP_RASTER_BRAILLE,
                            cached_scene.projected_route, cached_scene.route_count,
                            marker, columns, rows)) return;
-    for (row = 0; row < rows; row++)
-        for (column = 0; column < columns; column++)
-            if (raster.cells[row][column] == (uint32_t)' ')
-                raster.cells[row][column] =
-                    subcell_canvas_codepoint(&cached_scene.coastline, column, row);
     for (row = 0; row < rows; row++) {
-        char line[FRAME_LINE_CAPACITY];
-        if (map_raster_row_utf8(&raster, row, line, sizeof(line))) frame_add(frame, line);
+        FrameStyle styles[FRAME_LINE_CAPACITY];
+        (void)memset(styles, FRAME_STYLE_DEFAULT, sizeof(styles));
+        for (column = 0; column < columns; column++) {
+            if (geography_enabled && raster.cells[row][column] == (uint32_t)' ') {
+                uint32_t coastline = subcell_canvas_codepoint(&cached_scene.coastline,
+                                                               column, row);
+                raster.cells[row][column] = coastline;
+                if (coastline != (uint32_t)' ') styles[column] = FRAME_STYLE_DIM;
+            }
+        }
+        if (raster.marker_available && row == raster.marker_row)
+            styles[raster.marker_column] = FRAME_STYLE_ACCENT;
+        {
+            char line[FRAME_LINE_CAPACITY];
+            if (map_raster_row_utf8(&raster, row, line, sizeof(line)))
+                frame_add_styled(frame, line, styles);
+        }
     }
     if (live_marker && raster.marker_available && animation != NULL &&
         animation->heartbeat != NULL && strcmp(animation->heartbeat, "•") == 0)
-        frame_at(frame, raster.marker_column, "✈", "");
+        frame_at_styled(frame, raster.marker_column, "✈", "", FRAME_STYLE_ACCENT);
     else frame_blank(frame);
     render_status(frame, flight, live_marker);
-    frame_center(frame, cached_scene.geography_available ?
-                 "EXPERIMENTAL · NATURAL EARTH 110M" :
-                 "EXPERIMENTAL · GEOGRAPHY UNAVAILABLE", 0);
+    if (!cached_scene.geography_available)
+        frame_center(frame, "EXPERIMENTAL · GEOGRAPHY UNAVAILABLE", 0);
+    else frame_center(frame, geography_enabled ?
+                      "EXPERIMENTAL · GEO ON · g TOGGLE" :
+                      "EXPERIMENTAL · GEO OFF · g TOGGLE", 0);
     data_freshness_render(frame, flight, animation, time(NULL));
 }
