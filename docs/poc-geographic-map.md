@@ -55,6 +55,14 @@ the cosine of the route's mean latitude, and one `MapViewport` transforms both l
 The viewport aspect-fits the sampled great-circle and reserves a 12% geographic margin.
 Coastline segments are clipped at that viewport.
 
+The production route-only visual and the experimental geographic visual intentionally use
+different framing margins: route-only keeps a tighter 4% margin, while geography reserves
+12% so surrounding coastlines remain legible. Consequently, moving through `v` to the
+production route view and then restoring geography with `g` makes the path appear slightly
+smaller. The underlying great-circle geometry and progress position do not change; only the
+viewport scale changes. This is currently accepted as necessary POC behavior and should be
+reviewed again if the geographic treatment becomes a product feature.
+
 Longitude continuity is preserved within every coastline polyline before projection.
 This prevents Natural Earth's antimeridian seam from being interpreted as a real line
 crossing the entire viewport—a defect that was particularly visible on LHR–LAX framing.
