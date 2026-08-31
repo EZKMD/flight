@@ -133,6 +133,7 @@ Keyboard controls:
 - `q` — quit
 - `r` — refresh the active provider
 - `v` — cycle aircraft, altitude, and route views
+- `g` — toggle geography while in the route view
 - `f` — cycle fixtures in fixture mode only
 
 ## Altitude profile
@@ -164,17 +165,24 @@ available terminal space:
 ./flight BA281 --view route
 ```
 
-Wide and medium terminals use a Braille sub-cell raster for a smoother curve;
-compact and tiny terminals automatically use a compatibility line renderer.
-Both backends consume the same sampled route and projection. The `◆` marker is
-shown only for validated live geospatial progress (or a confirmed destination
-on landing), while the nearby pulsing `✈` is a visual annotation. Schedule-only
-progress is labeled textually and never presented as a geographic position.
+Wide and medium terminals use a Braille sub-cell raster for a smoother curve.
+Press `g` to add or remove dim Natural Earth coastline context without moving
+the route, endpoints, or current marker. Geography is off by default and adds
+no network requests or credentials. Compact and tiny terminals automatically
+keep the compatibility route renderer; if geography is enabled, it returns
+when the terminal is large enough again.
 
-Route mode makes no additional provider requests and requires no additional
-credentials. It currently draws only route geometry, endpoints, and the current
-position. It does not draw geography, a flown trail, waypoints, weather, nearby
-traffic, or airspace.
+The `◆` marker is shown only for validated live geospatial progress (or a
+confirmed destination on landing). Its nearby pulsing direction arrow follows
+the local great-circle tangent. Schedule-only progress is labeled textually and
+never presented as a geographic position. Styling does not carry semantic
+meaning by itself, and `NO_COLOR=1` disables ANSI colour styling.
+
+The coastline is generated from the public-domain Natural Earth 1:110m dataset
+and is compiled into the program; there is no runtime map service. See
+[`docs/geographic-route-map.md`](docs/geographic-route-map.md) for data provenance,
+projection details, limitations, and regeneration instructions. A flown trail,
+waypoints, weather, nearby traffic, and airspace are not currently drawn.
 
 ## Offline fixtures
 

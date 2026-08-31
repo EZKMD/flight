@@ -12,7 +12,6 @@ typedef enum {
     VISUAL_AIRCRAFT,
     VISUAL_ALTITUDE_PROFILE,
     VISUAL_ROUTE_MAP,
-    VISUAL_GEOGRAPHIC_MAP_POC,
     VISUAL_RADAR,
     VISUAL_MINIMAL
 } VisualMode;
@@ -21,7 +20,6 @@ typedef struct {
     VisualMode mode;
     const TelemetryHistory *history;
     bool geography_enabled;
-    bool geographic_experiment;
 } VisualViewport;
 
 void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
