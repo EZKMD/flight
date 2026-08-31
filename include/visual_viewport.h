@@ -21,6 +21,7 @@ typedef struct {
     VisualMode mode;
     const TelemetryHistory *history;
     bool geography_enabled;
+    bool geographic_experiment;
 } VisualViewport;
 
 void visual_viewport_init(VisualViewport *viewport, VisualMode mode,

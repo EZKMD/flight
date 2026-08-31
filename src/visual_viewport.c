@@ -14,6 +14,7 @@ void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
     viewport->mode = mode;
     viewport->history = history;
     viewport->geography_enabled = true;
+    viewport->geographic_experiment = mode == VISUAL_GEOGRAPHIC_MAP_POC;
 }
 
 bool visual_mode_parse(const char *name, VisualMode *mode)
@@ -36,13 +37,28 @@ const char *visual_mode_name(VisualMode mode)
 
 void visual_viewport_toggle(VisualViewport *viewport)
 {
-    if (viewport->mode == VISUAL_AIRCRAFT) viewport->mode = VISUAL_ALTITUDE_PROFILE;
-    else if (viewport->mode == VISUAL_ALTITUDE_PROFILE) viewport->mode = VISUAL_ROUTE_MAP;
-    else viewport->mode = VISUAL_AIRCRAFT;
+    if (viewport->geographic_experiment) {
+        if (viewport->mode == VISUAL_GEOGRAPHIC_MAP_POC)
+            viewport->mode = VISUAL_AIRCRAFT;
+        else if (viewport->mode == VISUAL_AIRCRAFT)
+            viewport->mode = VISUAL_ALTITUDE_PROFILE;
+        else if (viewport->mode == VISUAL_ALTITUDE_PROFILE)
+            viewport->mode = VISUAL_ROUTE_MAP;
+        else viewport->mode = VISUAL_GEOGRAPHIC_MAP_POC;
+    } else {
+        if (viewport->mode == VISUAL_AIRCRAFT) viewport->mode = VISUAL_ALTITUDE_PROFILE;
+        else if (viewport->mode == VISUAL_ALTITUDE_PROFILE) viewport->mode = VISUAL_ROUTE_MAP;
+        else viewport->mode = VISUAL_AIRCRAFT;
+    }
 }
 
 bool visual_viewport_toggle_geography(VisualViewport *viewport)
 {
+    if (viewport->mode == VISUAL_ROUTE_MAP && viewport->geographic_experiment) {
+        viewport->mode = VISUAL_GEOGRAPHIC_MAP_POC;
+        viewport->geography_enabled = true;
+        return true;
+    }
     if (viewport->mode != VISUAL_GEOGRAPHIC_MAP_POC) return false;
     viewport->geography_enabled = !viewport->geography_enabled;
     return true;

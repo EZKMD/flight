@@ -13,6 +13,12 @@ inside `--view geo` to switch between `GEO ON` and `GEO OFF`. This does not chan
 visual mode, viewport, route geometry, provider state, telemetry history, or refresh
 schedule.
 
+An invocation that begins in `--view geo` retains an experimental-cycle marker. Its `v`
+cycle is `geo → aircraft → altitude → route → geo`; normal invocations retain the released
+`aircraft → altitude → route` cycle. If the experimental cycle is paused on the route-only
+step, pressing `g` returns directly to `geo` with geography enabled. This recovery changes
+only visual state and still performs no provider or telemetry work.
+
 ## Geography data
 
 The generated runtime artifact uses the Natural Earth **1:110m coastline**, pinned to
@@ -48,6 +54,10 @@ projection. Longitude is unwrapped around the route, horizontal distance is scal
 the cosine of the route's mean latitude, and one `MapViewport` transforms both layers.
 The viewport aspect-fits the sampled great-circle and reserves a 12% geographic margin.
 Coastline segments are clipped at that viewport.
+
+Longitude continuity is preserved within every coastline polyline before projection.
+This prevents Natural Earth's antimeridian seam from being interpreted as a real line
+crossing the entire viewport—a defect that was particularly visible on LHR–LAX framing.
 
 The renderer caches the projected/rasterized coastline by origin, destination, terminal
 map width, and terminal map height. Heartbeat frames composite the cached geography with
@@ -109,7 +119,9 @@ NO_COLOR=1 ./flight BA281 --view geo
 ```
 
 Resize from wide to medium to compact and back. In compact mode, press `g` to expose the
-route-only fallback. Confirm `v` still cycles only aircraft → altitude → route.
+route-only fallback. For an ordinary launch, confirm `v` still cycles only aircraft →
+altitude → route. For a `--view geo` launch, confirm it returns through the experimental
+cycle described above and that `g` restores geography from its route-only step.
 
 Deterministic tests cover MEL–LHR, MEL–DOH, LHR–LAX, SYD–SIN, an antimeridian crossing,
 and a high-latitude route without consuming API quota.

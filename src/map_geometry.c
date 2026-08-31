@@ -157,24 +157,46 @@ bool map_viewport_fit(MapViewport *viewport, const MapRoute *route,
     return true;
 }
 
-bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
-                          MapPoint *point)
+static bool project_unwrapped(const MapViewport *viewport, double latitude,
+                              double longitude, MapPoint *point)
 {
-    double longitude;
     double x;
     double width;
     double height;
-    if (viewport == NULL || point == NULL || !geo_coordinate_valid(coordinate)) return false;
-    longitude = unwrap_longitude(coordinate.longitude, viewport->center_longitude);
+    if (viewport == NULL || point == NULL || !isfinite(latitude) ||
+        !isfinite(longitude)) return false;
     x = longitude * viewport->longitude_scale;
     width = viewport->maximum_x - viewport->minimum_x;
     height = viewport->maximum_y - viewport->minimum_y;
     if (width <= 0.0 || height <= 0.0) return false;
     point->x = viewport->margin + (x - viewport->minimum_x) / width *
                (1.0 - 2.0 * viewport->margin);
-    point->y = viewport->margin + (viewport->maximum_y - coordinate.latitude) / height *
+    point->y = viewport->margin + (viewport->maximum_y - latitude) / height *
                (1.0 - 2.0 * viewport->margin);
     return isfinite(point->x) && isfinite(point->y);
+}
+
+bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
+                          MapPoint *point)
+{
+    double longitude;
+    if (viewport == NULL || !geo_coordinate_valid(coordinate)) return false;
+    longitude = unwrap_longitude(coordinate.longitude, viewport->center_longitude);
+    return project_unwrapped(viewport, coordinate.latitude, longitude, point);
+}
+
+bool map_viewport_project_continuous(const MapViewport *viewport,
+                                     GeoCoordinate coordinate,
+                                     double *longitude_reference,
+                                     MapPoint *point)
+{
+    double longitude;
+    if (viewport == NULL || longitude_reference == NULL ||
+        !isfinite(*longitude_reference) || !geo_coordinate_valid(coordinate))
+        return false;
+    longitude = unwrap_longitude(coordinate.longitude, *longitude_reference);
+    *longitude_reference = longitude;
+    return project_unwrapped(viewport, coordinate.latitude, longitude, point);
 }
 
 static unsigned int clip_code(MapPoint point)

@@ -55,22 +55,31 @@ static bool rasterize_coastline(GeographicMapPocScene *scene)
         size_t point_count;
         size_t index;
         bool segment_visible = false;
+        double longitude_reference = scene->viewport.center_longitude;
+        GeoCoordinate previous_geo;
+        MapPoint previous;
         if (!coastline_data_segment_bounds(segment, &first_index, &point_count))
             continue;
+        if (!coastline_data_point(first_index, &previous_geo) ||
+            !map_viewport_project_continuous(&scene->viewport, previous_geo,
+                                             &longitude_reference, &previous))
+            continue;
         for (index = 1U; index < point_count; index++) {
-            GeoCoordinate first_geo;
-            GeoCoordinate second_geo;
-            MapPoint first;
-            MapPoint second;
-            if (!coastline_data_point(first_index + index - 1U, &first_geo) ||
-                !coastline_data_point(first_index + index, &second_geo) ||
-                !map_viewport_project(&scene->viewport, first_geo, &first) ||
-                !map_viewport_project(&scene->viewport, second_geo, &second))
+            GeoCoordinate current_geo;
+            MapPoint current;
+            MapPoint clipped_previous;
+            MapPoint clipped_current;
+            if (!coastline_data_point(first_index + index, &current_geo) ||
+                !map_viewport_project_continuous(&scene->viewport, current_geo,
+                                                 &longitude_reference, &current))
                 continue;
-            if (map_clip_normalized_line(&first, &second)) {
-                dotted_line(&scene->coastline, first, second);
+            clipped_previous = previous;
+            clipped_current = current;
+            if (map_clip_normalized_line(&clipped_previous, &clipped_current)) {
+                dotted_line(&scene->coastline, clipped_previous, clipped_current);
                 segment_visible = true;
             }
+            previous = current;
         }
         if (segment_visible) scene->coastline_segments_drawn++;
     }

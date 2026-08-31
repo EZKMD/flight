@@ -691,6 +691,35 @@ static void test_map_geometry(void)
     assert(!geo_coordinate_valid((GeoCoordinate){ 91.0, 0.0 }));
 
     {
+        MapViewport seam_viewport = {
+            .center_longitude = 0.0,
+            .longitude_scale = 1.0,
+            .minimum_x = -200.0,
+            .maximum_x = 200.0,
+            .minimum_y = -10.0,
+            .maximum_y = 10.0,
+            .margin = 0.0
+        };
+        MapPoint first_default;
+        MapPoint second_default;
+        MapPoint first_continuous;
+        MapPoint second_continuous;
+        double reference = seam_viewport.center_longitude;
+        assert(map_viewport_project(&seam_viewport, (GeoCoordinate){ 0.0, 179.0 },
+                                    &first_default));
+        assert(map_viewport_project(&seam_viewport, (GeoCoordinate){ 0.0, -179.0 },
+                                    &second_default));
+        assert(map_viewport_project_continuous(&seam_viewport,
+                                               (GeoCoordinate){ 0.0, 179.0 },
+                                               &reference, &first_continuous));
+        assert(map_viewport_project_continuous(&seam_viewport,
+                                               (GeoCoordinate){ 0.0, -179.0 },
+                                               &reference, &second_continuous));
+        assert(fabs(second_continuous.x - first_continuous.x) < 0.01);
+        assert(fabs(second_default.x - first_default.x) > 0.8);
+    }
+
+    {
         MapPoint first = { -0.5, 0.5 };
         MapPoint second = { 1.5, 0.5 };
         assert(map_clip_normalized_line(&first, &second));
@@ -854,6 +883,23 @@ static unsigned long coastline_fingerprint(const SubcellCanvas *canvas)
     return hash;
 }
 
+static int coastline_longest_cell_run(const SubcellCanvas *canvas)
+{
+    int longest = 0;
+    int row;
+    int column;
+    for (row = 0; row < canvas->rows; row++) {
+        int run = 0;
+        for (column = 0; column < canvas->columns; column++) {
+            if (canvas->cells[row][column] != 0U) {
+                run++;
+                if (run > longest) longest = run;
+            } else run = 0;
+        }
+    }
+    return longest;
+}
+
 static void test_geographic_map_poc_geometry(void)
 {
     static const GeoCoordinate routes[][2] = {
@@ -888,6 +934,9 @@ static void test_geographic_map_poc_geometry(void)
     assert(coastline_fingerprint(&scene.coastline) ==
            coastline_fingerprint(&repeated.coastline));
     assert(coastline_fingerprint(&scene.coastline) != 0UL);
+    assert(geographic_map_poc_prepare(&scene, routes[2][0], routes[2][1],
+                                      100, 12, true));
+    assert(coastline_longest_cell_run(&scene.coastline) <= 20);
     assert(geographic_map_poc_prepare(&scene, routes[0][0], routes[0][1],
                                       100, 12, false));
     assert(!scene.geography_available);
@@ -1004,6 +1053,20 @@ static void test_geographic_map_toggle_and_styles(void)
     assert(memcmp(&schedule, &before_schedule, sizeof(schedule)) == 0);
     assert(visual_viewport_toggle_geography(&viewport));
     assert(viewport.geography_enabled);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_AIRCRAFT);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(viewport.mode == VISUAL_GEOGRAPHIC_MAP_POC);
+    assert(viewport.geography_enabled);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_GEOGRAPHIC_MAP_POC);
 
     frame_init(&geography_on, layout.content_width);
     geographic_map_poc_render(&geography_on, &state, &animation, &layout, true);
