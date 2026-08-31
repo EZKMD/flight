@@ -61,7 +61,11 @@ FlightState + AnimationState + Layout
           |                    |
   screen_components      VisualViewport
                                |
-                 AircraftVisual / AltitudeProfileVisual
+          AircraftVisual / AltitudeProfileVisual / RouteMapVisual
+                                                     |
+                          MapViewport + Projection + Scene Layers
+                                                     |
+                                      Braille / Compat Raster Backend
                                |
                               Frame
                                |
@@ -100,7 +104,11 @@ main.c
     ├── screen_components.c
     ├── visual_viewport.c
     │   ├── aircraft_visual.c ── artwork.c
-    │   └── altitude_profile.c ← telemetry_history.c
+    │   ├── altitude_profile.c ← telemetry_history.c
+    │   └── route_map.c
+    │       ├── map_geometry.c
+    │       ├── map_raster.c
+    │       └── subcell_canvas.c
     └── frame.c ── terminal output
 ```
 
@@ -111,8 +119,8 @@ airport-board application mode. Airport mode is not CLI-reachable and has no
 provider or renderer. Its lightweight `AirportBoardState` contract is explicitly
 separate from `FlightState`.
 
-`VisualViewport` dispatches the implemented `AircraftVisual` and
-`AltitudeProfileVisual`; three other identifiers remain internal,
+`VisualViewport` dispatches the implemented `AircraftVisual`,
+`AltitudeProfileVisual`, and `RouteMapVisual`; radar and minimal remain internal,
 CLI-inaccessible placeholders. All represent one `FlightState`; airport board
 is not a visual mode.
 
@@ -120,10 +128,19 @@ is not a visual mode.
 VisualViewport
 ├── AircraftVisual (implemented and default)
 ├── AltitudeProfileVisual (implemented and optional)
-├── RouteMapVisual (placeholder)
+├── RouteMapVisual (implemented and optional)
 ├── RadarVisual (placeholder)
 └── MinimalVisual (placeholder)
 ```
+
+Route map is a small rendering subsystem. `map_geometry.c` samples the spherical
+great-circle and fits an antimeridian-safe route-local projection into a bounded
+`MapViewport`. The scene currently consists only of nominal route, endpoints,
+validated progress position, and the nearby aircraft annotation. `map_raster.c`
+feeds those same primitives to Braille or compatibility backends, with
+`subcell_canvas.c` providing the reusable 2×4 Braille pixel grid. Future
+geography, trails, waypoints, nearby traffic, weather, and airspace remain
+separate optional scene layers rather than speculative `FlightState` fields.
 
 `TelemetryHistory` is a provider-neutral bounded ring buffer of authoritative
 observations accepted during the current process session. It belongs to one

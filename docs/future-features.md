@@ -15,10 +15,11 @@ its renderer remain the default product.
 - `VisualViewport` dispatch contract
 - provider-neutral, session-only observed `TelemetryHistory`
 - responsive `AltitudeProfileVisual` with CLI selection and runtime switching
+- responsive `RouteMapVisual` with shared great-circle geometry, Braille and
+  compatibility backends, endpoints, and honest live-position semantics
 
 ## Candidate next work
 
-- `RouteMapVisual` with origin, destination, great-circle route, and aircraft
 - richer aircraft artwork selected by aircraft type and viewport tier
 
 ## Later possibilities
@@ -32,7 +33,8 @@ its renderer remain the default product.
 - historical telemetry backfill and flight playback
 - persisted telemetry history across tracker sessions
 - saved/watchlisted flights and multiple tracked flights
-- simplified world outlines, map layers, pan/zoom, and waypoints
+- RouteMapVisual layers such as simplified world outlines, flown trail,
+  waypoints, pan/zoom, weather, nearby traffic, and airspace
 - themes and configuration
 - additional commercial-flight and historical-telemetry providers
 
@@ -40,7 +42,9 @@ its renderer remain the default product.
 
 Aircraft, altitude profile, route map, radar, and minimal views are single-flight
 visuals. Each consumes one normalized `FlightState` and optional
-`TelemetryHistory` through `VisualViewport`.
+`TelemetryHistory` through `VisualViewport`. Route map V1 has a provider-neutral
+viewport/projection, composable scene passes, and interchangeable raster
+backends; only route, endpoint, position, and aircraft-annotation passes exist.
 
 Airport board is a separate application mode representing many flights. It must
 use a separate provider/state/renderer path and must not be inserted into

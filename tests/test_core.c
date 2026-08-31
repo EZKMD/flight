@@ -5,8 +5,12 @@
 #include "geospatial_progress.h"
 #include "json.h"
 #include "input.h"
+#include "map_geometry.h"
+#include "map_raster.h"
 #include "normalizer.h"
 #include "provider.h"
+#include "route_map.h"
+#include "subcell_canvas.h"
 #include "telemetry_provider.h"
 #include "telemetry_history.h"
 #include "visual_viewport.h"
@@ -644,6 +648,185 @@ static void test_altitude_profile_render_states(void)
     assert(frame_contains(&frame, "REQUIRES MORE SPACE"));
 }
 
+static void test_map_geometry(void)
+{
+    const GeoCoordinate melbourne = { -37.6733, 144.8433 };
+    const GeoCoordinate london = { 51.4700, -0.4543 };
+    GeoCoordinate point;
+    MapRoute route;
+    MapViewport viewport;
+    MapPoint projected;
+    size_t index;
+    assert(map_great_circle_position(melbourne, london, 0.0, &point));
+    assert(fabs(point.latitude - melbourne.latitude) < 0.001);
+    assert(map_great_circle_position(melbourne, london, 0.5, &point));
+    assert(point.latitude > 0.0);
+    assert(map_great_circle_position(melbourne, london, 1.0, &point));
+    assert(fabs(point.latitude - london.latitude) < 0.001);
+
+    assert(map_great_circle_position((GeoCoordinate){ 0.0, 170.0 },
+                                     (GeoCoordinate){ 0.0, -170.0 }, 0.5, &point));
+    assert(fabs(fabs(point.longitude) - 180.0) < 0.001);
+    assert(map_great_circle_position((GeoCoordinate){ 75.0, -40.0 },
+                                     (GeoCoordinate){ 75.0, 80.0 }, 0.5, &point));
+    assert(point.latitude > 75.0);
+    assert(map_route_sample((GeoCoordinate){ 0.0, 0.0 },
+                            (GeoCoordinate){ 0.001, 0.001 }, 1U, &route));
+    assert(route.count == 2U);
+    assert(map_route_sample((GeoCoordinate){ -40.0, 20.0 },
+                            (GeoCoordinate){ 40.0, 20.0 }, 64U, &route));
+    assert(map_viewport_fit(&viewport, &route, 80, 20, 0.05));
+    for (index = 0U; index < route.count; index++) {
+        assert(map_viewport_project(&viewport, route.points[index], &projected));
+        assert(projected.x >= 0.0 && projected.x <= 1.0);
+        assert(projected.y >= 0.0 && projected.y <= 1.0);
+    }
+    assert(map_route_sample((GeoCoordinate){ 10.0, -60.0 },
+                            (GeoCoordinate){ 10.0, 60.0 }, 64U, &route));
+    assert(map_viewport_fit(&viewport, &route, 80, 20, 0.05));
+    assert(!map_viewport_fit(&viewport, &route, 0, 20, 0.05));
+    assert(!geo_coordinate_valid((GeoCoordinate){ 91.0, 0.0 }));
+}
+
+static void test_subcell_canvas(void)
+{
+    static const int coordinates[8][2] = {
+        { 0, 0 }, { 0, 1 }, { 0, 2 }, { 1, 0 },
+        { 1, 1 }, { 1, 2 }, { 0, 3 }, { 1, 3 }
+    };
+    static const uint32_t expected[8] = {
+        UINT32_C(0x2801), UINT32_C(0x2802), UINT32_C(0x2804), UINT32_C(0x2808),
+        UINT32_C(0x2810), UINT32_C(0x2820), UINT32_C(0x2840), UINT32_C(0x2880)
+    };
+    SubcellCanvas canvas;
+    int index;
+    assert(!subcell_canvas_init(&canvas, 0, 1));
+    for (index = 0; index < 8; index++) {
+        assert(subcell_canvas_init(&canvas, 1, 1));
+        assert(subcell_canvas_set(&canvas, coordinates[index][0], coordinates[index][1]));
+        assert(subcell_canvas_codepoint(&canvas, 0, 0) == expected[index]);
+    }
+    assert(subcell_canvas_init(&canvas, 1, 1));
+    for (index = 0; index < 8; index++)
+        assert(subcell_canvas_set(&canvas, coordinates[index][0], coordinates[index][1]));
+    assert(subcell_canvas_codepoint(&canvas, 0, 0) == UINT32_C(0x28ff));
+    assert(!subcell_canvas_set(&canvas, -1, 0));
+    assert(!subcell_canvas_set(&canvas, 2, 0));
+    assert(subcell_canvas_init(&canvas, 4, 2));
+    subcell_canvas_line(&canvas, 0, 0, 7, 7);
+    assert(subcell_canvas_codepoint(&canvas, 0, 0) != (uint32_t)' ');
+    assert(subcell_canvas_codepoint(&canvas, 3, 1) != (uint32_t)' ');
+}
+
+static bool raster_contains(const MapRaster *raster, uint32_t codepoint)
+{
+    int row;
+    int column;
+    for (row = 0; row < raster->rows; row++)
+        for (column = 0; column < raster->columns; column++)
+            if (raster->cells[row][column] == codepoint) return true;
+    return false;
+}
+
+static void test_map_raster_backends(void)
+{
+    MapPoint horizontal[] = { { 0.0, 0.5 }, { 0.5, 0.5 }, { 1.0, 0.5 } };
+    MapPoint rising[] = { { 0.0, 1.0 }, { 1.0, 0.0 } };
+    MapPoint falling[] = { { 0.0, 0.0 }, { 1.0, 1.0 } };
+    MapPoint corner[] = { { 0.0, 0.0 }, { 1.0, 0.0 }, { 1.0, 1.0 } };
+    MapPoint clipped[] = { { -1.0, 0.5 }, { 2.0, 0.5 } };
+    MapPoint marker = { 0.5, 0.5 };
+    MapRaster raster;
+    char row[FRAME_LINE_CAPACITY];
+    assert(!map_raster_render(&raster, MAP_RASTER_COMPAT, horizontal, 3U,
+                              NULL, 1, 4));
+    assert(map_raster_render(&raster, MAP_RASTER_COMPAT, horizontal, 3U,
+                             &marker, 20, 5));
+    assert(raster_contains(&raster, UINT32_C(0x2500)));
+    assert(raster_contains(&raster, UINT32_C(0x25cf)));
+    assert(raster_contains(&raster, UINT32_C(0x25c6)));
+    assert(map_raster_row_utf8(&raster, raster.marker_row, row, sizeof(row)));
+    assert(strstr(row, "◆") != NULL);
+    assert(map_raster_render(&raster, MAP_RASTER_COMPAT, rising, 2U,
+                             NULL, 5, 5));
+    assert(raster_contains(&raster, UINT32_C(0x2571)));
+    assert(map_raster_render(&raster, MAP_RASTER_COMPAT, falling, 2U,
+                             NULL, 5, 5));
+    assert(raster_contains(&raster, UINT32_C(0x2572)));
+    assert(map_raster_render(&raster, MAP_RASTER_COMPAT, corner, 3U,
+                             NULL, 5, 5));
+    assert(raster_contains(&raster, UINT32_C(0x256e)));
+    assert(map_raster_render(&raster, MAP_RASTER_COMPAT, clipped, 2U,
+                             NULL, MAP_RASTER_MAX_COLUMNS, MAP_RASTER_MAX_ROWS));
+    assert(raster.cells[MAP_RASTER_MAX_ROWS / 2][0] != (uint32_t)' ');
+    assert(map_raster_render(&raster, MAP_RASTER_BRAILLE, rising, 2U,
+                             &marker, 20, 5));
+    assert(raster_contains(&raster, UINT32_C(0x25c6)));
+    assert(raster.cells[4][0] == UINT32_C(0x25cf));
+    assert(raster.cells[0][19] == UINT32_C(0x25cf));
+    assert(!map_raster_row_utf8(&raster, 0, row, 2U));
+}
+
+static void test_route_map_visual_states(void)
+{
+    FlightState state;
+    AnimationState animation;
+    Layout layout;
+    Frame frame;
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
+    layout = layout_select((TerminalSize){ 130, 30 });
+    assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_BRAILLE);
+    assert(route_map_backend_for_layout(LAYOUT_MEDIUM) == MAP_RASTER_BRAILLE);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+    assert(frame_contains(&frame, "◆"));
+    assert(frame_contains(&frame, "✈"));
+    assert(frame_contains(&frame, "58.2%"));
+
+    mock_provider_load(&state, FIXTURE_SCHEDULED, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(!frame_contains(&frame, "◆"));
+    assert(!frame_contains(&frame, "✈"));
+    assert(frame_contains(&frame, "SCHEDULE PROGRESS"));
+
+    mock_provider_load(&state, FIXTURE_UNAVAILABLE, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame_contains(&frame, "NO LIVE POSITION"));
+
+    mock_provider_load(&state, FIXTURE_STALE, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(!frame_contains(&frame, "◆"));
+    assert(!frame_contains(&frame, "✈"));
+
+    state.origin.latitude.available = false;
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame_contains(&frame, "ROUTE GEOMETRY UNAVAILABLE"));
+
+    mock_provider_load(&state, FIXTURE_LANDED, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame_contains(&frame, "100.0% · LANDED"));
+    assert(frame_contains(&frame, "◆"));
+
+    layout = layout_select((TerminalSize){ 60, 18 });
+    assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_COMPAT);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame.count <= FRAME_MAX_LINES);
+    layout = layout_select((TerminalSize){ 40, 12 });
+    assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_COMPAT);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout);
+    assert(frame.count <= layout.height);
+}
+
 static void test_visual_mode_contract(void)
 {
     TelemetryHistory history;
@@ -662,9 +845,17 @@ static void test_visual_mode_contract(void)
     assert(viewport.mode == VISUAL_AIRCRAFT);
     assert(visual_mode_parse("altitude", &viewport.mode));
     assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
+    assert(visual_mode_parse("route", &viewport.mode));
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
     assert(!visual_mode_parse("radar", &viewport.mode));
     assert(!visual_mode_parse("minimal", &viewport.mode));
     assert(strcmp(visual_mode_name(VISUAL_ALTITUDE_PROFILE), "altitude") == 0);
+    assert(strcmp(visual_mode_name(VISUAL_ROUTE_MAP), "route") == 0);
+    viewport.mode = VISUAL_AIRCRAFT;
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
     visual_viewport_toggle(&viewport);
     assert(viewport.mode == VISUAL_AIRCRAFT);
     assert(viewport.history == &history);
@@ -715,6 +906,10 @@ int main(void)
     test_altitude_profile_math();
     test_altitude_profile_geometry();
     test_altitude_profile_render_states();
+    test_map_geometry();
+    test_subcell_canvas();
+    test_map_raster_backends();
+    test_route_map_visual_states();
     test_visual_mode_contract();
     (void)puts("data semantics tests passed");
     return 0;

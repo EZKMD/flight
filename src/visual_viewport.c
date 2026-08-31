@@ -3,6 +3,7 @@
 #include "aircraft_visual.h"
 #include "altitude_profile.h"
 #include "future_visuals.h"
+#include "route_map.h"
 
 #include <string.h>
 
@@ -17,6 +18,7 @@ bool visual_mode_parse(const char *name, VisualMode *mode)
 {
     if (strcmp(name, "aircraft") == 0) *mode = VISUAL_AIRCRAFT;
     else if (strcmp(name, "altitude") == 0) *mode = VISUAL_ALTITUDE_PROFILE;
+    else if (strcmp(name, "route") == 0) *mode = VISUAL_ROUTE_MAP;
     else return false;
     return true;
 }
@@ -24,13 +26,15 @@ bool visual_mode_parse(const char *name, VisualMode *mode)
 const char *visual_mode_name(VisualMode mode)
 {
     if (mode == VISUAL_ALTITUDE_PROFILE) return "altitude";
+    if (mode == VISUAL_ROUTE_MAP) return "route";
     return "aircraft";
 }
 
 void visual_viewport_toggle(VisualViewport *viewport)
 {
-    viewport->mode = viewport->mode == VISUAL_AIRCRAFT ?
-                     VISUAL_ALTITUDE_PROFILE : VISUAL_AIRCRAFT;
+    if (viewport->mode == VISUAL_AIRCRAFT) viewport->mode = VISUAL_ALTITUDE_PROFILE;
+    else if (viewport->mode == VISUAL_ALTITUDE_PROFILE) viewport->mode = VISUAL_ROUTE_MAP;
+    else viewport->mode = VISUAL_AIRCRAFT;
 }
 
 void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
@@ -45,7 +49,7 @@ void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
             altitude_profile_visual_render(frame, flight, viewport->history, animation, layout);
             break;
         case VISUAL_ROUTE_MAP:
-            route_map_visual_render(frame, flight, viewport->history, animation, layout);
+            route_map_visual_render(frame, flight, animation, layout);
             break;
         case VISUAL_RADAR:
             radar_visual_render(frame, flight, viewport->history, animation, layout);

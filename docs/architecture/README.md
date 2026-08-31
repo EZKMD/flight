@@ -9,9 +9,9 @@ These documentation artifacts describe the current C codebase. The source code r
 - `flight-lookup.html` — the actual `./flight QF9` startup sequence, occurrence selection, cached resolver metadata, OpenSky handoff, normalization, and rendering.
 - `flight-state.html` — the logical areas of `FlightState`, their provider inputs, derived state, provenance, and renderer boundary.
 - `flight-lifecycle.html` — provider- and telemetry-derived flight phases. This is derivation logic, not a persistent transition engine.
-- `future-architecture.html` — implemented aircraft/altitude visual paths,
-  session history, remaining single-flight extension points, and the separately
-  reserved airport-mode path.
+- `future-architecture.html` — implemented aircraft, altitude, and route visual
+  paths, including the route map viewport/projection, composable V1 scene, and
+  shared Braille/compatibility backend boundary.
 - `ARCHITECTURE.md` — written details, renderer and repository maps, layout breakpoints, provider abstractions, and documentation-only future concepts.
 - `specs/*.json` — Archify source specifications used to generate the standalone HTML files.
 

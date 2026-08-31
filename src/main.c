@@ -56,13 +56,13 @@ static void print_usage(FILE *output, const char *program)
         "options:\n"
         "  --date YYYY-MM-DD   constrain occurrence date\n"
         "  --fixture NAME      use deterministic mock data\n"
-        "  --view NAME         select aircraft or altitude view\n"
+        "  --view NAME         select aircraft, altitude, or route view\n"
         "  --debug-provider    print safe diagnostics after exit\n"
         "  --help              show this help\n"
         "  --version           show version\n"
         "\n"
         "controls: q quit, r refresh, v switch view, f next fixture (fixture mode)\n"
-        "views: aircraft, altitude\n"
+        "views: aircraft, altitude, route\n"
         "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable\n",
         program);
 }
@@ -105,7 +105,7 @@ static bool parse_arguments(int argc, char **argv, Options *options,
         } else if (strcmp(argv[index], "--view") == 0) {
             if (++index >= argc || !visual_mode_parse(argv[index], &options->view)) {
                 (void)snprintf(error, error_capacity,
-                               "--view requires aircraft or altitude");
+                               "--view requires aircraft, altitude, or route");
                 return false;
             }
         } else if (strcmp(argv[index], "--debug-provider") == 0) {

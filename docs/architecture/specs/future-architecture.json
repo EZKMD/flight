@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Flight Tracker Extension Boundaries",
+    "title": "Flight Tracker Visual Architecture",
     "quality_profile": "showcase",
     "viewBox": [1390, 850]
   },
@@ -10,15 +10,15 @@
     { "id": "application", "type": "backend", "label": "Application", "sublabel": "AppMode selects experience", "tag": "IMPLEMENTED", "pos": [40, 300], "size": [170, 72] },
     { "id": "flightProvider", "type": "backend", "label": "FlightProvider", "sublabel": "live or mock", "tag": "IMPLEMENTED", "pos": [280, 300], "size": [170, 72] },
     { "id": "flightState", "type": "database", "label": "FlightState", "sublabel": "one resolved flight", "tag": "IMPLEMENTED", "pos": [520, 300], "size": [170, 72] },
-    { "id": "history", "type": "database", "label": "TelemetryHistory", "sublabel": "bounded session observations", "tag": "IMPLEMENTED", "pos": [470, 500], "size": [190, 72] },
+    { "id": "history", "type": "database", "label": "TelemetryHistory", "sublabel": "bounded session observations", "tag": "IMPLEMENTED", "pos": [700, 500], "size": [190, 72] },
     { "id": "viewport", "type": "frontend", "label": "VisualViewport", "sublabel": "single-flight dispatch", "tag": "IMPLEMENTED", "pos": [720, 300], "size": [180, 72] },
     { "id": "aircraftVisual", "type": "frontend", "label": "AircraftVisual", "sublabel": "default visual", "tag": "IMPLEMENTED", "pos": [930, 180], "size": [180, 72] },
     { "id": "altitudeVisual", "type": "frontend", "label": "AltitudeProfileVisual", "sublabel": "session observations", "tag": "IMPLEMENTED", "pos": [930, 330], "size": [210, 76] },
-    { "id": "futureVisuals", "type": "frontend", "label": "Future Flight Visuals", "sublabel": "map · radar · minimal", "tag": "PLACEHOLDERS", "pos": [930, 490], "size": [210, 76] },
+    { "id": "routeVisual", "type": "frontend", "label": "RouteMapVisual", "sublabel": "route · endpoints · position", "tag": "IMPLEMENTED", "pos": [930, 490], "size": [210, 76] },
     { "id": "terminal", "type": "external", "label": "Terminal", "sublabel": "current ANSI renderer", "tag": "IMPLEMENTED", "pos": [1180, 300], "size": [180, 72] },
-    { "id": "airportMode", "type": "backend", "label": "Airport Mode", "sublabel": "separate multi-flight path", "tag": "RESERVED", "pos": [280, 680], "size": [180, 72] },
-    { "id": "airportState", "type": "database", "label": "AirportBoardState", "sublabel": "many arrival/departure rows", "tag": "MODELED", "pos": [540, 680], "size": [200, 72] },
-    { "id": "airportRuntime", "type": "frontend", "label": "Airport Provider + Board", "sublabel": "not implemented", "tag": "PLANNED", "pos": [820, 680], "size": [210, 72] }
+    { "id": "mapProjection", "type": "backend", "label": "MapViewport + Projection", "sublabel": "route-local · fitted · clipped", "tag": "IMPLEMENTED", "pos": [500, 680], "size": [220, 72] },
+    { "id": "mapLayers", "type": "frontend", "label": "Map Scene Layers", "sublabel": "composable drawing passes", "tag": "V1 LAYERS", "pos": [790, 680], "size": [210, 72] },
+    { "id": "mapBackends", "type": "frontend", "label": "Raster Backends", "sublabel": "Braille · compatibility", "tag": "IMPLEMENTED", "pos": [1070, 680], "size": [210, 72] }
   ],
   "connections": [
     { "id": "appFlight", "from": "application", "to": "flightProvider", "label": "APP_MODE_FLIGHT", "variant": "emphasis", "labelAt": [245, 296] },
@@ -26,18 +26,19 @@
     { "id": "stateViewport", "from": "flightState", "to": "viewport", "label": "read-only", "variant": "emphasis", "labelAt": [705, 296] },
     { "id": "viewportAircraft", "from": "viewport", "to": "aircraftVisual", "label": "default dispatch", "variant": "emphasis", "labelAt": [915, 266] },
     { "id": "aircraftTerminal", "from": "aircraftVisual", "to": "terminal", "label": "Frame", "variant": "emphasis" },
-    { "id": "historyViewport", "from": "history", "to": "viewport", "label": "read-only observations", "variant": "emphasis" },
+    { "id": "historyViewport", "from": "history", "to": "viewport", "label": "read-only observations", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" },
     { "id": "viewportAltitude", "from": "viewport", "to": "altitudeVisual", "label": "optional dispatch", "variant": "emphasis", "labelAt": [1020, 420] },
     { "id": "altitudeTerminal", "from": "altitudeVisual", "to": "terminal", "label": "Frame", "variant": "emphasis" },
-    { "id": "viewportFuture", "from": "viewport", "to": "futureVisuals", "label": "internal stubs", "variant": "dashed" },
-    { "id": "futureTerminal", "from": "futureVisuals", "to": "terminal", "label": "not CLI-reachable", "variant": "dashed" },
-    { "id": "appAirport", "from": "application", "to": "airportMode", "label": "APP_MODE_AIRPORT", "variant": "dashed" },
-    { "id": "airportModeState", "from": "airportMode", "to": "airportState", "label": "separate state", "variant": "dashed" },
-    { "id": "airportStateRuntime", "from": "airportState", "to": "airportRuntime", "label": "future contract", "variant": "dashed" }
+    { "id": "viewportRoute", "from": "viewport", "to": "routeVisual", "label": "optional dispatch", "variant": "emphasis" },
+    { "id": "stateProjection", "from": "flightState", "to": "mapProjection", "label": "coordinates + progress", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "projectionLayers", "from": "mapProjection", "to": "mapLayers", "label": "projected primitives", "variant": "emphasis", "labelAt": [755, 766] },
+    { "id": "layersRoute", "from": "mapLayers", "to": "routeVisual", "label": "V1 scene", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "labelDx": -50 },
+    { "id": "layersBackends", "from": "mapLayers", "to": "mapBackends", "label": "shared scene", "variant": "emphasis", "labelDy": -26 },
+    { "id": "backendsTerminal", "from": "mapBackends", "to": "terminal", "label": "Frame", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Implemented now", "items": ["Provider → FlightState → AircraftVisual", "Observations → TelemetryHistory → AltitudeProfileVisual", "Aircraft and altitude view selection"] },
-    { "dot": "amber", "title": "Still planned", "items": ["Route map, radar, and minimal visuals", "Historical backfill and persistence", "Airport provider and board runtime"] },
-    { "dot": "cyan", "title": "Hard boundary", "items": ["Every VisualMode represents one FlightState", "Airport mode represents many flights and never enters VisualViewport"] }
+    { "dot": "emerald", "title": "Implemented visuals", "items": ["AircraftVisual remains the default", "TelemetryHistory feeds AltitudeProfileVisual", "RouteMapVisual uses one shared geometric scene"] },
+    { "dot": "amber", "title": "Optional future layers", "items": ["Geography, trail, waypoints, weather", "Nearby traffic and airspace", "Radar and minimal visuals remain stubs"] },
+    { "dot": "cyan", "title": "Hard boundary", "items": ["Map layers consume provider-neutral models", "Braille and compat never duplicate route logic"] }
   ]
 }

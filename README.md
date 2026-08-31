@@ -119,6 +119,7 @@ project commercially.
 ./flight QF1 --debug-provider
 ./flight QF9 --view aircraft
 ./flight BA281 --view altitude
+./flight BA281 --view route
 ./flight --help
 ./flight --version
 ```
@@ -131,7 +132,7 @@ Keyboard controls:
 
 - `q` — quit
 - `r` — refresh the active provider
-- `v` — switch between aircraft and altitude views
+- `v` — cycle aircraft, altitude, and route views
 - `f` — cycle fixtures in fixture mode only
 
 ## Altitude profile
@@ -153,6 +154,27 @@ waiting honestly for telemetry.
 The altitude view needs no additional API key beyond the existing live setup
 and does not change provider polling cadence. Pressing `v` switches views
 without clearing collected history or triggering a provider request.
+
+## Route map
+
+The route view fits the origin-to-destination great-circle geometry into the
+available terminal space:
+
+```sh
+./flight BA281 --view route
+```
+
+Wide and medium terminals use a Braille sub-cell raster for a smoother curve;
+compact and tiny terminals automatically use a compatibility line renderer.
+Both backends consume the same sampled route and projection. The `◆` marker is
+shown only for validated live geospatial progress (or a confirmed destination
+on landing), while the nearby pulsing `✈` is a visual annotation. Schedule-only
+progress is labeled textually and never presented as a geographic position.
+
+Route mode makes no additional provider requests and requires no additional
+credentials. It currently draws only route geometry, endpoints, and the current
+position. It does not draw geography, a flown trail, waypoints, weather, nearby
+traffic, or airspace.
 
 ## Offline fixtures
 
@@ -230,6 +252,10 @@ OpenSkyTelemetry → TelemetrySnapshot┘
                          ↓ accepted fresh observation
                   TelemetryHistory → AltitudeProfileVisual
 
+FlightState → RouteMapVisual → MapViewport / Projection
+                             → Route + Endpoints + Position
+                             → Braille / Compatibility backend
+
 MockDataProvider ─────────────────────→ FlightState ─→ Renderer
 ```
 
@@ -239,8 +265,8 @@ for six hours under `$XDG_CACHE_HOME/flight`, or `~/.cache/flight`; a bounded
 stale metadata fallback may be used after resolver failure.
 
 Airport codes and coordinates come from a generated static OurAirports snapshot
-documented in `data/README.md`. Route map, radar, minimal visual, and airport-mode
-contracts remain inactive placeholders.
+documented in `data/README.md`. Radar, minimal visual, and airport-mode contracts
+remain inactive placeholders.
 
 ## Known limitations
 
@@ -255,8 +281,10 @@ contracts remain inactive placeholders.
 - Provider-confirmed `AIRBORNE` is less precise than telemetry-derived phases.
 - Airport reference data is a generated static snapshot and can become outdated.
 - Altitude history begins at process startup and is not persisted or backfilled.
-- Route map, radar, and minimal visual modes remain internal placeholders and
-  are not CLI-reachable.
+- Route map V1 has no world outlines, flown trail, waypoints, pan/zoom, weather,
+  nearby traffic, or airspace layers.
+- Radar and minimal visual modes remain internal placeholders and are not
+  CLI-reachable.
 - Airport board mode is modeled separately but not implemented.
 
 ## Release and development documentation
