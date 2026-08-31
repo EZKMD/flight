@@ -14,7 +14,7 @@ ASCII dashboard:
 flight QF9
 ```
 
-V0.1 resolves one coherent commercial occurrence and physical leg, optionally
+`flight` resolves one coherent commercial occurrence and physical leg, optionally
 joins it to fresh OpenSky telemetry by exact ICAO24, normalizes everything into
 provider-neutral state, and renders it without a terminal UI framework.
 
@@ -95,7 +95,7 @@ fi
 
 Never commit the key, paste it into issue reports or chats, or include it in
 diagnostic logs. If a key is exposed, revoke or rotate it in the AirLabs account
-dashboard. Local `.env` files are ignored as a precaution, but V0.1 does not
+dashboard. Local `.env` files are ignored as a precaution, but `flight` does not
 automatically load them; the shell environment remains the supported workflow.
 
 Without a key, live AirLabs resolution reports that the credential is missing.
@@ -107,7 +107,7 @@ make test
 ./flight QF9 --fixture cruising
 ```
 
-OpenSky telemetry is anonymous in V0.1. Its availability and licensing terms
+OpenSky telemetry is anonymous in v0.2.0. Its availability and licensing terms
 are independent of AirLabs; confirm appropriate provider terms before using the
 project commercially.
 
@@ -281,7 +281,7 @@ remain inactive placeholders.
 - OpenSky may have no current matching telemetry, especially across oceanic or
   sparse ADS-B coverage.
 - AirLabs may omit ICAO24, aircraft model, registration, or other metadata.
-- Without ICAO24, V0.1 does not attempt a loose callsign telemetry match.
+- Without ICAO24, `flight` does not attempt a loose callsign telemetry match.
 - Some commercial-designator formats are unsupported; three-character airline
   prefixes are not automatically converted to IATA.
 - Schedule progress is not geographic position and can conflict with delayed
@@ -289,8 +289,8 @@ remain inactive placeholders.
 - Provider-confirmed `AIRBORNE` is less precise than telemetry-derived phases.
 - Airport reference data is a generated static snapshot and can become outdated.
 - Altitude history begins at process startup and is not persisted or backfilled.
-- Route map V1 has no world outlines, flown trail, waypoints, pan/zoom, weather,
-  nearby traffic, or airspace layers.
+- Route geography is intentionally low-detail and can distort at high latitudes;
+  there is no flown trail, waypoints, pan/zoom, weather, nearby traffic, or airspace.
 - Radar and minimal visual modes remain internal placeholders and are not
   CLI-reachable.
 - Airport board mode is modeled separately but not implemented.
@@ -299,6 +299,7 @@ remain inactive placeholders.
 
 - `docs/v0.1-validation.md` — V0.1 validation matrix
 - `docs/releases/v0.1.0.md` — V0.1.0 release notes
+- `docs/releases/v0.2.0.md` — V0.2.0 release notes
 - `docs/publishing.md` — credential-safe publishing and release checklist
 - `docs/live-validation.md` — detailed live-provider validation notes
 - `docs/future-features.md` — non-committed future directions

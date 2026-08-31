@@ -223,7 +223,7 @@ int main(int argc, char **argv)
     collect_history(&history, &options, &live_context, &flight);
     animation_init(&animation);
     runtime_schedule_init(&schedule, animation_now_ms());
-    /* Airport mode is intentionally not CLI-reachable in V0.1. */
+    /* Airport mode remains intentionally unavailable through the public CLI. */
     if (options.mode != APP_MODE_FLIGHT) {
         http_transport_cleanup();
         return 2;
