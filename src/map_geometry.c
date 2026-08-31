@@ -176,3 +176,59 @@ bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
                (1.0 - 2.0 * viewport->margin);
     return isfinite(point->x) && isfinite(point->y);
 }
+
+static unsigned int clip_code(MapPoint point)
+{
+    unsigned int code = 0U;
+    if (point.x < 0.0) code |= 1U;
+    else if (point.x > 1.0) code |= 2U;
+    if (point.y < 0.0) code |= 4U;
+    else if (point.y > 1.0) code |= 8U;
+    return code;
+}
+
+bool map_clip_normalized_line(MapPoint *first, MapPoint *second)
+{
+    unsigned int first_code;
+    unsigned int second_code;
+    int iteration;
+    if (first == NULL || second == NULL || !isfinite(first->x) ||
+        !isfinite(first->y) || !isfinite(second->x) || !isfinite(second->y))
+        return false;
+    first_code = clip_code(*first);
+    second_code = clip_code(*second);
+    for (iteration = 0; iteration < 16; iteration++) {
+        unsigned int outside;
+        MapPoint intersection;
+        if ((first_code | second_code) == 0U) return true;
+        if ((first_code & second_code) != 0U) return false;
+        outside = first_code != 0U ? first_code : second_code;
+        if ((outside & 8U) != 0U) {
+            intersection.x = first->x + (second->x - first->x) *
+                             (1.0 - first->y) / (second->y - first->y);
+            intersection.y = 1.0;
+        } else if ((outside & 4U) != 0U) {
+            intersection.x = first->x + (second->x - first->x) *
+                             (0.0 - first->y) / (second->y - first->y);
+            intersection.y = 0.0;
+        } else if ((outside & 2U) != 0U) {
+            intersection.y = first->y + (second->y - first->y) *
+                             (1.0 - first->x) / (second->x - first->x);
+            intersection.x = 1.0;
+        } else {
+            intersection.y = first->y + (second->y - first->y) *
+                             (0.0 - first->x) / (second->x - first->x);
+            intersection.x = 0.0;
+        }
+        intersection.x = clamp(intersection.x, 0.0, 1.0);
+        intersection.y = clamp(intersection.y, 0.0, 1.0);
+        if (outside == first_code) {
+            *first = intersection;
+            first_code = clip_code(*first);
+        } else {
+            *second = intersection;
+            second_code = clip_code(*second);
+        }
+    }
+    return false;
+}

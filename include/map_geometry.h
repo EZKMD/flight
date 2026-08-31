@@ -40,5 +40,6 @@ bool map_viewport_fit(MapViewport *viewport, const MapRoute *route,
                       int pixel_width, int pixel_height, double margin);
 bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
                           MapPoint *point);
+bool map_clip_normalized_line(MapPoint *first, MapPoint *second);
 
 #endif
