@@ -254,3 +254,34 @@ bool map_clip_normalized_line(MapPoint *first, MapPoint *second)
     }
     return false;
 }
+
+const char *map_route_direction_arrow(const MapPoint *route, size_t route_count,
+                                      double progress)
+{
+    double route_position;
+    double dx;
+    double dy;
+    double angle;
+    size_t center;
+    size_t first;
+    size_t second;
+    if (route == NULL || route_count < 2U) return "→";
+    progress = clamp(progress, 0.0, 1.0);
+    route_position = progress * (double)(route_count - 1U);
+    center = (size_t)(route_position + 0.5);
+    if (center >= route_count) center = route_count - 1U;
+    first = center > 0U ? center - 1U : center;
+    second = center + 1U < route_count ? center + 1U : center;
+    dx = route[second].x - route[first].x;
+    dy = route[second].y - route[first].y;
+    if (fabs(dx) < 1e-9 && fabs(dy) < 1e-9) return "→";
+    angle = atan2(-dy, dx) * 180.0 / MAP_PI;
+    if (angle >= 157.5 || angle < -157.5) return "←";
+    if (angle >= 112.5) return "↖";
+    if (angle >= 67.5) return "↑";
+    if (angle >= 22.5) return "↗";
+    if (angle >= -22.5) return "→";
+    if (angle >= -67.5) return "↘";
+    if (angle >= -112.5) return "↓";
+    return "↙";
+}

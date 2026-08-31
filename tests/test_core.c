@@ -483,6 +483,15 @@ static bool frame_contains(const Frame *frame, const char *text)
     return false;
 }
 
+static bool frame_contains_direction_arrow(const Frame *frame)
+{
+    static const char *arrows[] = { "←", "↖", "↑", "↗", "→", "↘", "↓", "↙" };
+    size_t index;
+    for (index = 0U; index < sizeof(arrows) / sizeof(arrows[0]); index++)
+        if (frame_contains(frame, arrows[index])) return true;
+    return false;
+}
+
 static void test_telemetry_history_acceptance_and_lifecycle(void)
 {
     TelemetryHistory history;
@@ -720,6 +729,27 @@ static void test_map_geometry(void)
     }
 
     {
+        static const MapPoint directions[][2] = {
+            { { 0.0, 0.0 }, { 1.0, 0.0 } },
+            { { 0.0, 1.0 }, { 1.0, 0.0 } },
+            { { 0.0, 1.0 }, { 0.0, 0.0 } },
+            { { 1.0, 1.0 }, { 0.0, 0.0 } },
+            { { 1.0, 0.0 }, { 0.0, 0.0 } },
+            { { 1.0, 0.0 }, { 0.0, 1.0 } },
+            { { 0.0, 0.0 }, { 0.0, 1.0 } },
+            { { 0.0, 0.0 }, { 1.0, 1.0 } }
+        };
+        static const char *expected[] = { "→", "↗", "↑", "↖", "←", "↙", "↓", "↘" };
+        size_t direction_index;
+        for (direction_index = 0U;
+             direction_index < sizeof(expected) / sizeof(expected[0]);
+             direction_index++)
+            assert(strcmp(map_route_direction_arrow(directions[direction_index],
+                                                    2U, 0.5),
+                          expected[direction_index]) == 0);
+    }
+
+    {
         MapPoint first = { -0.5, 0.5 };
         MapPoint second = { 1.5, 0.5 };
         assert(map_clip_normalized_line(&first, &second));
@@ -826,7 +856,8 @@ static void test_route_map_visual_states(void)
     route_map_visual_render(&frame, &state, &animation, &layout);
     assert(frame_contains(&frame, "ROUTE MAP"));
     assert(frame_contains(&frame, "◆"));
-    assert(frame_contains(&frame, "✈"));
+    assert(frame_contains_direction_arrow(&frame));
+    assert(!frame_contains(&frame, "✈"));
     assert(frame_contains(&frame, "58.2%"));
 
     mock_provider_load(&state, FIXTURE_SCHEDULED, "QF9", test_now);
@@ -834,6 +865,7 @@ static void test_route_map_visual_states(void)
     route_map_visual_render(&frame, &state, &animation, &layout);
     assert(!frame_contains(&frame, "◆"));
     assert(!frame_contains(&frame, "✈"));
+    assert(!frame_contains_direction_arrow(&frame));
     assert(frame_contains(&frame, "SCHEDULE PROGRESS"));
 
     mock_provider_load(&state, FIXTURE_UNAVAILABLE, "QF9", test_now);
@@ -957,7 +989,7 @@ static void test_geographic_map_poc_states(void)
     assert(frame_contains(&frame, "GEOGRAPHIC MAP POC"));
     assert(frame_contains(&frame, "GEO ON"));
     assert(frame_contains(&frame, "◆"));
-    assert(frame_contains(&frame, "✈"));
+    assert(!frame_contains(&frame, "✈"));
 
     layout = layout_select((TerminalSize){ 100, 24 });
     frame_init(&frame, layout.content_width);

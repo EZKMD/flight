@@ -256,7 +256,11 @@ void geographic_map_poc_render(Frame *frame, const FlightState *flight,
     }
     if (live_marker && raster.marker_available && animation != NULL &&
         animation->heartbeat != NULL && strcmp(animation->heartbeat, "•") == 0)
-        frame_at_styled(frame, raster.marker_column, "✈", "", FRAME_STYLE_ACCENT);
+        frame_at_styled(frame, raster.marker_column,
+                        map_route_direction_arrow(cached_scene.projected_route,
+                                                  cached_scene.route_count,
+                                                  flight_progress_clamped(flight)),
+                        "", FRAME_STYLE_ACCENT);
     else frame_blank(frame);
     render_status(frame, flight, live_marker);
     if (!cached_scene.geography_available)

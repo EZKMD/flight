@@ -45,5 +45,7 @@ bool map_viewport_project_continuous(const MapViewport *viewport,
                                      double *longitude_reference,
                                      MapPoint *point);
 bool map_clip_normalized_line(MapPoint *first, MapPoint *second);
+const char *map_route_direction_arrow(const MapPoint *route, size_t route_count,
+                                      double progress);
 
 #endif

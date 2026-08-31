@@ -79,8 +79,10 @@ static void render_status(Frame *frame, const FlightState *flight, bool live_mar
     } else frame_center(frame, "NO LIVE POSITION", 0);
 }
 
-static void render_aircraft_annotation(Frame *frame, const MapRaster *raster,
-                                       const AnimationState *animation, bool show)
+static void render_direction_annotation(Frame *frame, const MapRaster *raster,
+                                        const MapPoint *route, size_t route_count,
+                                        double progress,
+                                        const AnimationState *animation, bool show)
 {
     char line[FRAME_LINE_CAPACITY];
     int column;
@@ -92,7 +94,8 @@ static void render_aircraft_annotation(Frame *frame, const MapRaster *raster,
     }
     column = raster->marker_column;
     if (column >= frame->width) column = frame->width - 1;
-    (void)snprintf(line, sizeof(line), "%*s✈", column, "");
+    (void)snprintf(line, sizeof(line), "%*s%s", column, "",
+                   map_route_direction_arrow(route, route_count, progress));
     frame_add(frame, line);
 }
 
@@ -170,7 +173,9 @@ void route_map_visual_render(Frame *frame, const FlightState *flight,
         char line[FRAME_LINE_CAPACITY];
         if (map_raster_row_utf8(&raster, (int)index, line, sizeof(line))) frame_add(frame, line);
     }
-    render_aircraft_annotation(frame, &raster, animation, live_marker);
+    render_direction_annotation(frame, &raster, projected, route.count,
+                                flight_progress_clamped(flight), animation,
+                                live_marker);
     render_status(frame, flight, live_marker);
     frame_blank(frame);
     data_freshness_render(frame, flight, animation, time(NULL));

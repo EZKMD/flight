@@ -72,11 +72,18 @@ map width, and terminal map height. Heartbeat frames composite the cached geogra
 the route and current marker without reprojecting all 5,127 coastline points.
 
 Coastlines are unfilled, broken Braille strokes. The continuous route is rendered on a
-separate layer and wins every cell collision; `●`, `◆`, and the pulsing `✈` then win over
+separate layer and wins every cell collision; `●`, `◆`, and the pulsing direction arrow then win over
 both. Coastline cells use standard ANSI dim, route/endpoints remain default-bright, and
-`◆`/`✈` use standard bright cyan. Glyph structure—not hue—continues to distinguish every
+`◆`/the direction arrow use standard bright cyan. Glyph structure—not hue—continues to distinguish every
 layer. Styling is stored separately from glyph strings so ANSI bytes do not affect width,
 clipping, or alignment. Each styled run is reset before another layer or line is written.
+
+The map-path annotation now uses `← ↖ ↑ ↗ → ↘ ↓ ↙` instead of a fixed-facing `✈`.
+Its direction is calculated from the local tangent of the projected great-circle at the
+current progress point, so it follows both trip direction and route curvature. This change
+applies only to the isolated route map and geographic map; the normal journey progress line
+and altitude-profile aircraft symbols remain unchanged. `◆` remains the authoritative
+position marker.
 
 Set `NO_COLOR` to any value to omit all experimental SGR styling:
 
