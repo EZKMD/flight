@@ -1,8 +1,10 @@
 #include "altitude_profile.h"
 #include "airport_reference.h"
+#include "coastline_data.h"
 #include "flight_candidate.h"
 #include "flight_designator.h"
 #include "geospatial_progress.h"
+#include "route_map_scene.h"
 #include "json.h"
 #include "input.h"
 #include "map_geometry.h"
@@ -10,6 +12,7 @@
 #include "normalizer.h"
 #include "provider.h"
 #include "route_map.h"
+#include "runtime.h"
 #include "subcell_canvas.h"
 #include "telemetry_provider.h"
 #include "telemetry_history.h"
@@ -480,6 +483,15 @@ static bool frame_contains(const Frame *frame, const char *text)
     return false;
 }
 
+static bool frame_contains_direction_arrow(const Frame *frame)
+{
+    static const char *arrows[] = { "←", "↖", "↑", "↗", "→", "↘", "↓", "↙" };
+    size_t index;
+    for (index = 0U; index < sizeof(arrows) / sizeof(arrows[0]); index++)
+        if (frame_contains(frame, arrows[index])) return true;
+    return false;
+}
+
 static void test_telemetry_history_acceptance_and_lifecycle(void)
 {
     TelemetryHistory history;
@@ -686,6 +698,67 @@ static void test_map_geometry(void)
     assert(map_viewport_fit(&viewport, &route, 80, 20, 0.05));
     assert(!map_viewport_fit(&viewport, &route, 0, 20, 0.05));
     assert(!geo_coordinate_valid((GeoCoordinate){ 91.0, 0.0 }));
+
+    {
+        MapViewport seam_viewport = {
+            .center_longitude = 0.0,
+            .longitude_scale = 1.0,
+            .minimum_x = -200.0,
+            .maximum_x = 200.0,
+            .minimum_y = -10.0,
+            .maximum_y = 10.0,
+            .margin = 0.0
+        };
+        MapPoint first_default;
+        MapPoint second_default;
+        MapPoint first_continuous;
+        MapPoint second_continuous;
+        double reference = seam_viewport.center_longitude;
+        assert(map_viewport_project(&seam_viewport, (GeoCoordinate){ 0.0, 179.0 },
+                                    &first_default));
+        assert(map_viewport_project(&seam_viewport, (GeoCoordinate){ 0.0, -179.0 },
+                                    &second_default));
+        assert(map_viewport_project_continuous(&seam_viewport,
+                                               (GeoCoordinate){ 0.0, 179.0 },
+                                               &reference, &first_continuous));
+        assert(map_viewport_project_continuous(&seam_viewport,
+                                               (GeoCoordinate){ 0.0, -179.0 },
+                                               &reference, &second_continuous));
+        assert(fabs(second_continuous.x - first_continuous.x) < 0.01);
+        assert(fabs(second_default.x - first_default.x) > 0.8);
+    }
+
+    {
+        static const MapPoint directions[][2] = {
+            { { 0.0, 0.0 }, { 1.0, 0.0 } },
+            { { 0.0, 1.0 }, { 1.0, 0.0 } },
+            { { 0.0, 1.0 }, { 0.0, 0.0 } },
+            { { 1.0, 1.0 }, { 0.0, 0.0 } },
+            { { 1.0, 0.0 }, { 0.0, 0.0 } },
+            { { 1.0, 0.0 }, { 0.0, 1.0 } },
+            { { 0.0, 0.0 }, { 0.0, 1.0 } },
+            { { 0.0, 0.0 }, { 1.0, 1.0 } }
+        };
+        static const char *expected[] = { "→", "↗", "↑", "↖", "←", "↙", "↓", "↘" };
+        size_t direction_index;
+        for (direction_index = 0U;
+             direction_index < sizeof(expected) / sizeof(expected[0]);
+             direction_index++)
+            assert(strcmp(map_route_direction_arrow(directions[direction_index],
+                                                    2U, 0.5),
+                          expected[direction_index]) == 0);
+    }
+
+    {
+        MapPoint first = { -0.5, 0.5 };
+        MapPoint second = { 1.5, 0.5 };
+        assert(map_clip_normalized_line(&first, &second));
+        assert(fabs(first.x) < 0.0001);
+        assert(fabs(second.x - 1.0) < 0.0001);
+        first = (MapPoint){ -0.5, -0.5 };
+        second = (MapPoint){ -0.1, -0.1 };
+        assert(!map_clip_normalized_line(&first, &second));
+    }
 }
 
 static void test_subcell_canvas(void)
@@ -780,51 +853,310 @@ static void test_route_map_visual_states(void)
     assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_BRAILLE);
     assert(route_map_backend_for_layout(LAYOUT_MEDIUM) == MAP_RASTER_BRAILLE);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame_contains(&frame, "ROUTE MAP"));
     assert(frame_contains(&frame, "◆"));
-    assert(frame_contains(&frame, "✈"));
+    assert(frame_contains_direction_arrow(&frame));
+    assert(!frame_contains(&frame, "✈"));
     assert(frame_contains(&frame, "58.2%"));
 
     mock_provider_load(&state, FIXTURE_SCHEDULED, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(!frame_contains(&frame, "◆"));
     assert(!frame_contains(&frame, "✈"));
+    assert(!frame_contains_direction_arrow(&frame));
     assert(frame_contains(&frame, "SCHEDULE PROGRESS"));
 
     mock_provider_load(&state, FIXTURE_UNAVAILABLE, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame_contains(&frame, "NO LIVE POSITION"));
 
     mock_provider_load(&state, FIXTURE_STALE, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(!frame_contains(&frame, "◆"));
     assert(!frame_contains(&frame, "✈"));
 
     state.origin.latitude.available = false;
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame_contains(&frame, "ROUTE GEOMETRY UNAVAILABLE"));
 
     mock_provider_load(&state, FIXTURE_LANDED, "QF9", test_now);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame_contains(&frame, "100.0% · LANDED"));
     assert(frame_contains(&frame, "◆"));
 
     layout = layout_select((TerminalSize){ 60, 18 });
     assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_COMPAT);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame.count <= FRAME_MAX_LINES);
     layout = layout_select((TerminalSize){ 40, 12 });
     assert(route_map_backend_for_layout(layout.mode) == MAP_RASTER_COMPAT);
     frame_init(&frame, layout.content_width);
-    route_map_visual_render(&frame, &state, &animation, &layout);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
     assert(frame.count <= layout.height);
+}
+
+static unsigned long coastline_fingerprint(const SubcellCanvas *canvas)
+{
+    unsigned long hash = 2166136261UL;
+    int row;
+    int column;
+    for (row = 0; row < canvas->rows; row++)
+        for (column = 0; column < canvas->columns; column++) {
+            hash ^= (unsigned long)canvas->cells[row][column];
+            hash *= 16777619UL;
+        }
+    return hash;
+}
+
+static int coastline_longest_cell_run(const SubcellCanvas *canvas)
+{
+    int longest = 0;
+    int row;
+    int column;
+    for (row = 0; row < canvas->rows; row++) {
+        int run = 0;
+        for (column = 0; column < canvas->columns; column++) {
+            if (canvas->cells[row][column] != 0U) {
+                run++;
+                if (run > longest) longest = run;
+            } else run = 0;
+        }
+    }
+    return longest;
+}
+
+static void test_route_map_geography_geometry(void)
+{
+    static const GeoCoordinate routes[][2] = {
+        { { -37.6733, 144.8433 }, { 51.4700, -0.4543 } },
+        { { -37.6733, 144.8433 }, { 25.2731, 51.6081 } },
+        { { 51.4700, -0.4543 }, { 33.9416, -118.4085 } },
+        { { -33.9399, 151.1753 }, { 1.3644, 103.9915 } },
+        { { -17.7554, 177.4434 }, { 21.3187, -157.9225 } },
+        { { 64.1300, -21.9406 }, { 61.1743, -149.9985 } }
+    };
+    RouteMapScene scene;
+    RouteMapScene repeated;
+    MapPoint projected_origin;
+    size_t index;
+    assert(coastline_data_point_count() == 5127U);
+    assert(coastline_data_segment_count() == 134U);
+    for (index = 0U; index < sizeof(routes) / sizeof(routes[0]); index++) {
+        assert(route_map_scene_prepare(&scene, routes[index][0], routes[index][1],
+                                       100, 12, true));
+        assert(scene.valid);
+        assert(scene.geography_available);
+        assert(scene.coastline_segments_drawn > 0U);
+        assert(map_viewport_project(&scene.viewport, routes[index][0],
+                                    &projected_origin));
+        assert(fabs(projected_origin.x - scene.projected_route[0].x) < 0.000001);
+        assert(fabs(projected_origin.y - scene.projected_route[0].y) < 0.000001);
+    }
+    assert(route_map_scene_prepare(&scene, routes[0][0], routes[0][1],
+                                   100, 12, true));
+    assert(route_map_scene_prepare(&repeated, routes[0][0], routes[0][1],
+                                   100, 12, true));
+    assert(coastline_fingerprint(&scene.coastline) ==
+           coastline_fingerprint(&repeated.coastline));
+    assert(coastline_fingerprint(&scene.coastline) != 0UL);
+    assert(route_map_scene_prepare(&scene, routes[2][0], routes[2][1],
+                                   100, 12, true));
+    assert(coastline_longest_cell_run(&scene.coastline) <= 20);
+    assert(route_map_scene_prepare(&scene, routes[0][0], routes[0][1],
+                                   100, 12, false));
+    assert(!scene.geography_available);
+    assert(scene.coastline_segments_drawn == 0U);
+}
+
+static void test_route_map_geography_states(void)
+{
+    FlightState state;
+    AnimationState animation;
+    Layout layout = layout_select((TerminalSize){ 130, 30 });
+    Frame frame;
+    (void)memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+    assert(frame_contains(&frame, "GEOGRAPHY ON"));
+    assert(frame_contains(&frame, "◆"));
+    assert(!frame_contains(&frame, "✈"));
+
+    layout = layout_select((TerminalSize){ 100, 24 });
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "GEOGRAPHY ON"));
+    assert(frame_contains(&frame, "◆"));
+
+    mock_provider_load(&state, FIXTURE_SCHEDULED, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(!frame_contains(&frame, "◆"));
+    assert(!frame_contains(&frame, "✈"));
+    assert(frame_contains(&frame, "SCHEDULE PROGRESS"));
+
+    mock_provider_load(&state, FIXTURE_LANDED, "QF9", test_now);
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "100.0% · LANDED"));
+    assert(frame_contains(&frame, "◆"));
+
+    layout = layout_select((TerminalSize){ 70, 20 });
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+    assert(!frame_contains(&frame, "REQUIRES MORE SPACE"));
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, false);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+
+    layout = layout_select((TerminalSize){ 44, 14 });
+    frame_init(&frame, layout.content_width);
+    route_map_visual_render(&frame, &state, &animation, &layout, true);
+    assert(frame_contains(&frame, "ROUTE MAP"));
+    assert(!frame_contains(&frame, "REQUIRES MORE SPACE"));
+}
+
+static int frame_style_count(const Frame *frame, FrameStyle style)
+{
+    int count = 0;
+    int row;
+    int column;
+    for (row = 0; row < frame->count; row++)
+        for (column = 0; column < frame->width; column++)
+            if (frame->styles[row][column] == style) count++;
+    return count;
+}
+
+static uint32_t frame_codepoint_at(const Frame *frame, int row, int wanted_column)
+{
+    const unsigned char *cursor = (const unsigned char *)frame->lines[row];
+    int column = 0;
+    while (*cursor != '\0' && column < wanted_column) {
+        if ((*cursor & 0x80U) == 0U) cursor += 1;
+        else if ((*cursor & 0xe0U) == 0xc0U) cursor += 2;
+        else if ((*cursor & 0xf0U) == 0xe0U) cursor += 3;
+        else cursor += 4;
+        column++;
+    }
+    if (column != wanted_column || *cursor == '\0') return 0U;
+    if ((*cursor & 0x80U) == 0U) return (uint32_t)*cursor;
+    if ((*cursor & 0xe0U) == 0xc0U)
+        return ((uint32_t)(cursor[0] & 0x1fU) << 6) |
+               (uint32_t)(cursor[1] & 0x3fU);
+    return ((uint32_t)(cursor[0] & 0x0fU) << 12) |
+           ((uint32_t)(cursor[1] & 0x3fU) << 6) |
+           (uint32_t)(cursor[2] & 0x3fU);
+}
+
+static void test_route_map_geography_toggle_and_styles(void)
+{
+    FlightState state;
+    FlightState before_state;
+    AnimationState animation;
+    TelemetryHistory history;
+    RuntimeSchedule schedule;
+    RuntimeSchedule before_schedule;
+    TelemetryHistory before_history;
+    VisualViewport viewport;
+    Layout layout = layout_select((TerminalSize){ 130, 30 });
+    Frame geography_on;
+    Frame geography_off;
+    int row;
+    int column;
+    bool saw_styled_reset = false;
+    (void)memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
+    telemetry_history_init(&history);
+    runtime_schedule_init(&schedule, 1000U);
+    mock_provider_load(&state, FIXTURE_QF9_CRUISING, "QF9", test_now);
+    before_state = state;
+    before_schedule = schedule;
+    before_history = history;
+    visual_viewport_init(&viewport, VISUAL_ROUTE_MAP, &history);
+    assert(!viewport.geography_enabled);
+    assert(input_action_for_key('g') == INPUT_TOGGLE_GEOGRAPHY);
+    assert(INPUT_TOGGLE_GEOGRAPHY != INPUT_REFRESH);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(viewport.geography_enabled);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(viewport.history == &history);
+    assert(memcmp(&state, &before_state, sizeof(state)) == 0);
+    assert(memcmp(&schedule, &before_schedule, sizeof(schedule)) == 0);
+    assert(memcmp(&history, &before_history, sizeof(history)) == 0);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(!viewport.geography_enabled);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_AIRCRAFT);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(!viewport.geography_enabled);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(viewport.geography_enabled);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(viewport.geography_enabled);
+
+    frame_init(&geography_on, layout.content_width);
+    route_map_visual_render(&geography_on, &state, &animation, &layout, true);
+    frame_init(&geography_off, layout.content_width);
+    route_map_visual_render(&geography_off, &state, &animation, &layout, false);
+    assert(frame_contains(&geography_on, "GEOGRAPHY ON"));
+    assert(frame_contains(&geography_off, "GEOGRAPHY OFF"));
+    assert(frame_style_count(&geography_on, FRAME_STYLE_DIM) > 0);
+    assert(frame_style_count(&geography_off, FRAME_STYLE_DIM) == 0);
+    assert(frame_style_count(&geography_on, FRAME_STYLE_ACCENT) >= 2);
+    assert(frame_style_count(&geography_off, FRAME_STYLE_ACCENT) >= 2);
+    for (row = 3; row < 15; row++) {
+        char styled[FRAME_RENDERED_LINE_CAPACITY];
+        char monochrome[FRAME_RENDERED_LINE_CAPACITY];
+        assert(frame_render_line(&geography_on, row, true, styled, sizeof(styled)));
+        assert(frame_render_line(&geography_on, row, false, monochrome,
+                                 sizeof(monochrome)));
+        assert(strchr(monochrome, '\x1b') == NULL);
+        assert(strcmp(monochrome, geography_on.lines[row]) == 0);
+        if (strstr(styled, "\x1b[2m") != NULL &&
+            strstr(styled, "\x1b[0m") != NULL) saw_styled_reset = true;
+        for (column = 0; column < geography_off.width; column++) {
+            uint32_t off_glyph = frame_codepoint_at(&geography_off, row, column);
+            if (off_glyph != 0U && off_glyph != (uint32_t)' ') {
+                assert(frame_codepoint_at(&geography_on, row, column) == off_glyph);
+                assert(geography_on.styles[row][column] != FRAME_STYLE_DIM);
+                if (off_glyph == UINT32_C(0x25c6))
+                    assert(geography_on.styles[row][column] == FRAME_STYLE_ACCENT);
+            }
+        }
+    }
+    assert(saw_styled_reset);
+
+    layout = layout_select((TerminalSize){ 100, 24 });
+    frame_init(&geography_on, layout.content_width);
+    route_map_visual_render(&geography_on, &state, &animation, &layout, true);
+    frame_init(&geography_off, layout.content_width);
+    route_map_visual_render(&geography_off, &state, &animation, &layout, false);
+    assert(frame_contains(&geography_on, "GEOGRAPHY ON"));
+    assert(frame_contains(&geography_off, "GEOGRAPHY OFF"));
+
+    viewport.mode = VISUAL_AIRCRAFT;
+    assert(!visual_viewport_toggle_geography(&viewport));
+    assert(viewport.mode == VISUAL_AIRCRAFT);
+    viewport.mode = VISUAL_ALTITUDE_PROFILE;
+    assert(!visual_viewport_toggle_geography(&viewport));
+    assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
 }
 
 static void test_visual_mode_contract(void)
@@ -847,6 +1179,7 @@ static void test_visual_mode_contract(void)
     assert(viewport.mode == VISUAL_ALTITUDE_PROFILE);
     assert(visual_mode_parse("route", &viewport.mode));
     assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(!visual_mode_parse("geo", &viewport.mode));
     assert(!visual_mode_parse("radar", &viewport.mode));
     assert(!visual_mode_parse("minimal", &viewport.mode));
     assert(strcmp(visual_mode_name(VISUAL_ALTITUDE_PROFILE), "altitude") == 0);
@@ -863,6 +1196,7 @@ static void test_visual_mode_contract(void)
     assert(input_action_for_key('r') == INPUT_REFRESH);
     assert(input_action_for_key('f') == INPUT_NEXT_FIXTURE);
     assert(input_action_for_key('v') == INPUT_NEXT_VISUAL);
+    assert(input_action_for_key('g') == INPUT_TOGGLE_GEOGRAPHY);
     memset(&state, 0, sizeof(state));
     memset(&animation, 0, sizeof(animation));
     memset(&layout, 0, sizeof(layout));
@@ -875,6 +1209,7 @@ static void test_visual_mode_contract(void)
     visual_viewport_init(&viewport, VISUAL_ROUTE_MAP, NULL);
     visual_viewport_render(&viewport, &frame, &state, &animation, &layout);
     assert(strstr(frame.lines[0], "ROUTE MAP") != NULL);
+    layout = layout_select((TerminalSize){ 100, 24 });
     frame_init(&frame, 80);
     visual_viewport_init(&viewport, VISUAL_RADAR, NULL);
     visual_viewport_render(&viewport, &frame, &state, &animation, &layout);
@@ -910,6 +1245,9 @@ int main(void)
     test_subcell_canvas();
     test_map_raster_backends();
     test_route_map_visual_states();
+    test_route_map_geography_geometry();
+    test_route_map_geography_states();
+    test_route_map_geography_toggle_and_styles();
     test_visual_mode_contract();
     (void)puts("data semantics tests passed");
     return 0;

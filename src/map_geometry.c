@@ -157,22 +157,131 @@ bool map_viewport_fit(MapViewport *viewport, const MapRoute *route,
     return true;
 }
 
-bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
-                          MapPoint *point)
+static bool project_unwrapped(const MapViewport *viewport, double latitude,
+                              double longitude, MapPoint *point)
 {
-    double longitude;
     double x;
     double width;
     double height;
-    if (viewport == NULL || point == NULL || !geo_coordinate_valid(coordinate)) return false;
-    longitude = unwrap_longitude(coordinate.longitude, viewport->center_longitude);
+    if (viewport == NULL || point == NULL || !isfinite(latitude) ||
+        !isfinite(longitude)) return false;
     x = longitude * viewport->longitude_scale;
     width = viewport->maximum_x - viewport->minimum_x;
     height = viewport->maximum_y - viewport->minimum_y;
     if (width <= 0.0 || height <= 0.0) return false;
     point->x = viewport->margin + (x - viewport->minimum_x) / width *
                (1.0 - 2.0 * viewport->margin);
-    point->y = viewport->margin + (viewport->maximum_y - coordinate.latitude) / height *
+    point->y = viewport->margin + (viewport->maximum_y - latitude) / height *
                (1.0 - 2.0 * viewport->margin);
     return isfinite(point->x) && isfinite(point->y);
+}
+
+bool map_viewport_project(const MapViewport *viewport, GeoCoordinate coordinate,
+                          MapPoint *point)
+{
+    double longitude;
+    if (viewport == NULL || !geo_coordinate_valid(coordinate)) return false;
+    longitude = unwrap_longitude(coordinate.longitude, viewport->center_longitude);
+    return project_unwrapped(viewport, coordinate.latitude, longitude, point);
+}
+
+bool map_viewport_project_continuous(const MapViewport *viewport,
+                                     GeoCoordinate coordinate,
+                                     double *longitude_reference,
+                                     MapPoint *point)
+{
+    double longitude;
+    if (viewport == NULL || longitude_reference == NULL ||
+        !isfinite(*longitude_reference) || !geo_coordinate_valid(coordinate))
+        return false;
+    longitude = unwrap_longitude(coordinate.longitude, *longitude_reference);
+    *longitude_reference = longitude;
+    return project_unwrapped(viewport, coordinate.latitude, longitude, point);
+}
+
+static unsigned int clip_code(MapPoint point)
+{
+    unsigned int code = 0U;
+    if (point.x < 0.0) code |= 1U;
+    else if (point.x > 1.0) code |= 2U;
+    if (point.y < 0.0) code |= 4U;
+    else if (point.y > 1.0) code |= 8U;
+    return code;
+}
+
+bool map_clip_normalized_line(MapPoint *first, MapPoint *second)
+{
+    unsigned int first_code;
+    unsigned int second_code;
+    int iteration;
+    if (first == NULL || second == NULL || !isfinite(first->x) ||
+        !isfinite(first->y) || !isfinite(second->x) || !isfinite(second->y))
+        return false;
+    first_code = clip_code(*first);
+    second_code = clip_code(*second);
+    for (iteration = 0; iteration < 16; iteration++) {
+        unsigned int outside;
+        MapPoint intersection;
+        if ((first_code | second_code) == 0U) return true;
+        if ((first_code & second_code) != 0U) return false;
+        outside = first_code != 0U ? first_code : second_code;
+        if ((outside & 8U) != 0U) {
+            intersection.x = first->x + (second->x - first->x) *
+                             (1.0 - first->y) / (second->y - first->y);
+            intersection.y = 1.0;
+        } else if ((outside & 4U) != 0U) {
+            intersection.x = first->x + (second->x - first->x) *
+                             (0.0 - first->y) / (second->y - first->y);
+            intersection.y = 0.0;
+        } else if ((outside & 2U) != 0U) {
+            intersection.y = first->y + (second->y - first->y) *
+                             (1.0 - first->x) / (second->x - first->x);
+            intersection.x = 1.0;
+        } else {
+            intersection.y = first->y + (second->y - first->y) *
+                             (0.0 - first->x) / (second->x - first->x);
+            intersection.x = 0.0;
+        }
+        intersection.x = clamp(intersection.x, 0.0, 1.0);
+        intersection.y = clamp(intersection.y, 0.0, 1.0);
+        if (outside == first_code) {
+            *first = intersection;
+            first_code = clip_code(*first);
+        } else {
+            *second = intersection;
+            second_code = clip_code(*second);
+        }
+    }
+    return false;
+}
+
+const char *map_route_direction_arrow(const MapPoint *route, size_t route_count,
+                                      double progress)
+{
+    double route_position;
+    double dx;
+    double dy;
+    double angle;
+    size_t center;
+    size_t first;
+    size_t second;
+    if (route == NULL || route_count < 2U) return "→";
+    progress = clamp(progress, 0.0, 1.0);
+    route_position = progress * (double)(route_count - 1U);
+    center = (size_t)(route_position + 0.5);
+    if (center >= route_count) center = route_count - 1U;
+    first = center > 0U ? center - 1U : center;
+    second = center + 1U < route_count ? center + 1U : center;
+    dx = route[second].x - route[first].x;
+    dy = route[second].y - route[first].y;
+    if (fabs(dx) < 1e-9 && fabs(dy) < 1e-9) return "→";
+    angle = atan2(-dy, dx) * 180.0 / MAP_PI;
+    if (angle >= 157.5 || angle < -157.5) return "←";
+    if (angle >= 112.5) return "↖";
+    if (angle >= 67.5) return "↑";
+    if (angle >= 22.5) return "↗";
+    if (angle >= -22.5) return "→";
+    if (angle >= -67.5) return "↘";
+    if (angle >= -112.5) return "↓";
+    return "↙";
 }

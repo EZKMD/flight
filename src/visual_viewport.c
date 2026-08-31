@@ -12,6 +12,7 @@ void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
 {
     viewport->mode = mode;
     viewport->history = history;
+    viewport->geography_enabled = false;
 }
 
 bool visual_mode_parse(const char *name, VisualMode *mode)
@@ -37,6 +38,13 @@ void visual_viewport_toggle(VisualViewport *viewport)
     else viewport->mode = VISUAL_AIRCRAFT;
 }
 
+bool visual_viewport_toggle_geography(VisualViewport *viewport)
+{
+    if (viewport->mode != VISUAL_ROUTE_MAP) return false;
+    viewport->geography_enabled = !viewport->geography_enabled;
+    return true;
+}
+
 void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
                             const FlightState *flight, const AnimationState *animation,
                             const Layout *layout)
@@ -49,7 +57,8 @@ void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
             altitude_profile_visual_render(frame, flight, viewport->history, animation, layout);
             break;
         case VISUAL_ROUTE_MAP:
-            route_map_visual_render(frame, flight, animation, layout);
+            route_map_visual_render(frame, flight, animation, layout,
+                                    viewport->geography_enabled);
             break;
         case VISUAL_RADAR:
             radar_visual_render(frame, flight, viewport->history, animation, layout);

@@ -4,6 +4,8 @@
 #include "screen_components.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static void build_full(Frame *frame, const FlightState *flight,
@@ -40,6 +42,7 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
     int row;
     int index;
     int visible;
+    bool styling_enabled = getenv("NO_COLOR") == NULL;
     time_t now = time(NULL);
     frame_init(&frame, layout->content_width);
 
@@ -58,9 +61,12 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
         (void)fputs("\x1b[2K", stdout);
         index = row - top;
         if (index >= 0 && index < visible) {
+            char rendered[FRAME_RENDERED_LINE_CAPACITY];
             int left = (layout->width - frame.width) / 2;
             if (left < 0) left = 0;
-            (void)fprintf(stdout, "%*s%s", left, "", frame.lines[index]);
+            if (frame_render_line(&frame, index, styling_enabled,
+                                  rendered, sizeof(rendered)))
+                (void)fprintf(stdout, "%*s%s", left, "", rendered);
         }
         if (row + 1 < layout->height) (void)fputc('\n', stdout);
     }

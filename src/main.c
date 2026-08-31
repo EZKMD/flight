@@ -56,12 +56,12 @@ static void print_usage(FILE *output, const char *program)
         "options:\n"
         "  --date YYYY-MM-DD   constrain occurrence date\n"
         "  --fixture NAME      use deterministic mock data\n"
-        "  --view NAME         select aircraft, altitude, or route view\n"
+        "  --view NAME         select aircraft, altitude, or route\n"
         "  --debug-provider    print safe diagnostics after exit\n"
         "  --help              show this help\n"
         "  --version           show version\n"
         "\n"
-        "controls: q quit, r refresh, v switch view, f next fixture (fixture mode)\n"
+        "controls: q quit, r refresh, v switch view, f next fixture, g geography (route)\n"
         "views: aircraft, altitude, route\n"
         "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable\n",
         program);
@@ -267,6 +267,9 @@ int main(int argc, char **argv)
                 redraw = true;
             } else if (action == INPUT_NEXT_VISUAL) {
                 visual_viewport_toggle(&viewport);
+                redraw = true;
+            } else if (action == INPUT_TOGGLE_GEOGRAPHY &&
+                       visual_viewport_toggle_geography(&viewport)) {
                 redraw = true;
             }
         }

@@ -24,6 +24,7 @@ src/%.o: src/%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 src/airport_reference.o: data/airports_generated.inc
+src/coastline_data.o: data/coastline_110m_generated.inc
 
 run: $(TARGET)
 	./$(TARGET) QF9

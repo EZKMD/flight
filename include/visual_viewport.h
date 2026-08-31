@@ -19,6 +19,7 @@ typedef enum {
 typedef struct {
     VisualMode mode;
     const TelemetryHistory *history;
+    bool geography_enabled;
 } VisualViewport;
 
 void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
@@ -26,6 +27,7 @@ void visual_viewport_init(VisualViewport *viewport, VisualMode mode,
 bool visual_mode_parse(const char *name, VisualMode *mode);
 const char *visual_mode_name(VisualMode mode);
 void visual_viewport_toggle(VisualViewport *viewport);
+bool visual_viewport_toggle_geography(VisualViewport *viewport);
 void visual_viewport_render(const VisualViewport *viewport, Frame *frame,
                             const FlightState *flight, const AnimationState *animation,
                             const Layout *layout);
