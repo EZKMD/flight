@@ -89,7 +89,7 @@ static void add_status_line(Frame *frame, const char *line, int status_column,
 {
     FrameStyle styles[FRAME_LINE_CAPACITY];
     int index;
-    size_t length = strlen(line);
+    size_t length = (size_t)frame_text_width(line);
     (void)memset(styles, FRAME_STYLE_DEFAULT, sizeof(styles));
     for (index = status_column; index < status_column + status_width &&
          index < FRAME_LINE_CAPACITY; index++) if (index >= 0) styles[index] = status;
@@ -106,8 +106,12 @@ size_t airport_board_visible_capacity(const Layout *layout)
     int reserved = layout->mode == LAYOUT_TINY ? 7 : 9;
     int per_row = layout->mode == LAYOUT_COMPACT || layout->mode == LAYOUT_TINY ? 2 : 1;
     int available = layout->height - reserved;
+    size_t layout_limit = layout->mode == LAYOUT_TINY ? 3U :
+                          layout->mode == LAYOUT_COMPACT ? 5U : 8U;
+    size_t fitting;
     if (available < per_row) return 1U;
-    return (size_t)(available / per_row);
+    fitting = (size_t)(available / per_row);
+    return fitting < layout_limit ? fitting : layout_limit;
 }
 
 static void render_header(Frame *frame, const AirportBoardState *board,
@@ -160,7 +164,7 @@ static void render_row(Frame *frame, AirportBoardState *board,
                        recently_changed(row) ? "  UPDATED" : "");
         status_column = 53;
         add_status_line(frame, line, status_column,
-                        (int)strlen(status) + (int)strlen(indicator), style,
+                        frame_text_width(status) + frame_text_width(indicator), style,
                         recently_changed(row));
     } else if (layout->mode == LAYOUT_MEDIUM) {
         (void)snprintf(line, sizeof(line), "%c %-5s %-8s %-17.17s %-5.5s %-14s%s%s",
@@ -168,9 +172,9 @@ static void render_row(Frame *frame, AirportBoardState *board,
                        place->name[0] != '\0' ? place->name : place->iata,
                        resource[0] != '\0' ? resource : "—", status, indicator,
                        recently_changed(row) ? " *" : "");
-        status_column = 40;
+        status_column = 41;
         add_status_line(frame, line, status_column,
-                        (int)strlen(status) + (int)strlen(indicator), style,
+                        frame_text_width(status) + frame_text_width(indicator), style,
                         recently_changed(row));
     } else {
         (void)snprintf(line, sizeof(line), "%c%s %-8s %-12.12s",
@@ -181,7 +185,8 @@ static void render_row(Frame *frame, AirportBoardState *board,
                        board->direction == AIRPORT_BOARD_ARRIVALS ? "B" : "G",
                        resource[0] != '\0' ? resource : "—", status, indicator,
                        recently_changed(row) ? "  UPDATED" : "");
-        add_styled(frame, second, 8, (int)strlen(status) + (int)strlen(indicator), style);
+        add_styled(frame, second, 8,
+                   frame_text_width(status) + frame_text_width(indicator), style);
     }
 }
 
@@ -190,6 +195,7 @@ void airport_board_render(Frame *frame, AirportBoardState *board,
 {
     AirportBoardStream *stream = airport_board_stream(board);
     size_t capacity = airport_board_visible_capacity(layout), index, rendered = 0U;
+    int body_end;
     bool now_rendered = false;
     char footer[FRAME_LINE_CAPACITY], freshness[64];
     frame_init(frame, layout->content_width);
@@ -202,6 +208,8 @@ void airport_board_render(Frame *frame, AirportBoardState *board,
             frame_add(frame, "  TIME   FLIGHT   DESTINATION / ORIGIN     TERM GATE STATUS");
         else frame_add(frame, "  TIME  FLIGHT   DESTINATION/ORIGIN GATE  STATUS");
     }
+    body_end = frame->count + (int)capacity *
+               (layout->mode == LAYOUT_COMPACT || layout->mode == LAYOUT_TINY ? 2 : 1) + 1;
     for (index = stream->scroll_offset; index < stream->row_count && rendered < capacity; index++) {
         const AirportFlightOccurrence *row = &stream->rows[index];
         int start;
@@ -223,6 +231,7 @@ void airport_board_render(Frame *frame, AirportBoardState *board,
     if (!now_rendered && stream->row_count > 0U &&
         airport_board_occurrence_time(&stream->rows[stream->row_count - 1U], board->direction) < board->local_now)
         render_now(frame, board->local_now);
+    while (frame->count < body_end) frame_blank(frame);
     frame_blank(frame);
     if (layout->mode == LAYOUT_WIDE || layout->mode == LAYOUT_MEDIUM)
         (void)snprintf(footer, sizeof(footer),

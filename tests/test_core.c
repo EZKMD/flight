@@ -1375,6 +1375,7 @@ static void test_airport_board_rendering_and_input(void)
     AnimationState animation;
     InputParser parser;
     InputAction action = INPUT_NONE;
+    int initial_medium_frame_count = 0;
     size_t size_index;
     assert(airport_board_fixture_load(&board, "MEL"));
     (void)memset(&animation, 0, sizeof(animation));
@@ -1390,6 +1391,19 @@ static void test_airport_board_rendering_and_input(void)
         assert(frame_contains(&frame, "NOW"));
         assert(frame_contains(&frame, ">"));
         assert(board.hitbox_count > 0U);
+        if (size_index == 1U) {
+            int line_index;
+            initial_medium_frame_count = frame.count;
+            for (line_index = 0; line_index < frame.count; line_index++) {
+                const char *gate_closed = strstr(frame.lines[line_index], "GATE CLOSED");
+                if (gate_closed != NULL) {
+                    size_t column = (size_t)(gate_closed - frame.lines[line_index]);
+                    assert(frame.styles[line_index][column] == FRAME_STYLE_WARNING);
+                    assert(frame.styles[line_index][column + strlen("GATE CLOSED") - 1U] ==
+                           FRAME_STYLE_WARNING);
+                }
+            }
+        }
         if (size_index == 0U) {
             assert(frame_style_count(&frame, FRAME_STYLE_ACCENT) > 0);
             assert(frame_style_count(&frame, FRAME_STYLE_WARNING) > 0);
@@ -1405,6 +1419,16 @@ static void test_airport_board_rendering_and_input(void)
             assert(strchr(plain, '\x1b') == NULL);
             assert(frame_text_width(frame.lines[row]) <= frame.width);
         }
+    }
+    {
+        Layout layout = layout_select((TerminalSize){ 100, 24 });
+        Frame frame;
+        AirportBoardStream *stream = airport_board_stream(&board);
+        (void)snprintf(stream->selected_row_id, sizeof(stream->selected_row_id), "%s",
+                       stream->rows[stream->row_count - 1U].row_id);
+        assert(airport_board_fixture_prefetch(&board));
+        airport_board_render(&frame, &board, &animation, &layout);
+        assert(frame.count == initial_medium_frame_count);
     }
     animation.heartbeat = "·";
     {
