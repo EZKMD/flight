@@ -1,5 +1,8 @@
 #include "altitude_profile.h"
 #include "airport_reference.h"
+#include "airport_board_fixture.h"
+#include "airport_board_renderer.h"
+#include "airport_board_state.h"
 #include "coastline_data.h"
 #include "flight_candidate.h"
 #include "flight_designator.h"
@@ -1220,6 +1223,219 @@ static void test_visual_mode_contract(void)
     assert(strstr(frame.lines[0], "MINIMAL") != NULL);
 }
 
+static void test_airport_board_contracts_and_storage(void)
+{
+    AirportBoardState board;
+    AirportBoardStream *stream;
+    AirportFlightOccurrence rows[80];
+    size_t index;
+    airport_board_init(&board);
+    assert(AIRPORT_BOARD_DEPARTURES != AIRPORT_BOARD_ARRIVALS);
+    assert(AIRPORT_IDENTITY_HIGH != AIRPORT_IDENTITY_LOW);
+    assert(strcmp(airport_board_status_label(AIRPORT_STATUS_GATE_CLOSED),
+                  "GATE CLOSED") == 0);
+    assert(strcmp(airport_board_status_label(AIRPORT_STATUS_CANCELLED),
+                  "CANCELLED") == 0);
+    stream = airport_board_stream(&board);
+    for (index = 0U; index < 80U; index++) {
+        (void)memset(&rows[index], 0, sizeof(rows[index]));
+        (void)snprintf(rows[index].row_id, sizeof(rows[index].row_id), "row-%03zu", index);
+        rows[index].scheduled_departure_utc =
+            (OptionalTime){ true, test_now + (time_t)((79U - index) * 60U) };
+        rows[index].estimated_departure_utc =
+            (OptionalTime){ true, test_now + (time_t)(index * 600U) };
+    }
+    assert(airport_board_stream_merge(stream, rows, 80U, AIRPORT_BOARD_DEPARTURES));
+    assert(stream->row_count == 80U);
+    assert(stream->row_capacity >= 80U);
+    assert(airport_board_occurrence_time(&stream->rows[0], AIRPORT_BOARD_DEPARTURES) <
+           airport_board_occurrence_time(&stream->rows[79], AIRPORT_BOARD_DEPARTURES));
+    assert(airport_board_stream_merge(stream, rows, 80U, AIRPORT_BOARD_DEPARTURES));
+    assert(stream->row_count == 80U);
+    (void)snprintf(stream->selected_row_id, sizeof(stream->selected_row_id), "row-040");
+    assert(airport_board_selected(&board) != NULL);
+    airport_board_free(&board);
+}
+
+static void test_airport_board_fixture_streaming(void)
+{
+    AirportBoardState board;
+    AirportBoardStream *departures;
+    AirportBoardStream *arrivals;
+    char departure_selection[AIRPORT_BOARD_ROW_ID_CAPACITY];
+    size_t initial_count;
+    int step;
+    assert(airport_board_fixture_load(&board, "MEL"));
+    assert(!airport_board_fixture_load(&(AirportBoardState){0}, "XXX"));
+    departures = &board.streams[0];
+    arrivals = &board.streams[1];
+    assert(departures->row_count == 8U);
+    assert(arrivals->row_count == 8U);
+    assert(departures->has_more_before && departures->has_more_after);
+    (void)snprintf(departure_selection, sizeof(departure_selection), "%s",
+                   departures->selected_row_id);
+    assert(airport_board_select_delta(&board, -1, 4U));
+    assert(airport_board_fixture_prefetch(&board));
+    assert(departures->windows_before_loaded == 1U);
+    assert(departures->row_count == 16U);
+    assert(strcmp(departures->selected_row_id, departure_selection) != 0);
+    initial_count = departures->row_count;
+    for (step = 0; step < 40; step++) {
+        (void)airport_board_select_delta(&board, 1, 4U);
+        (void)airport_board_fixture_prefetch(&board);
+    }
+    assert(departures->windows_after_loaded == 2U);
+    assert(!departures->has_more_after);
+    assert(departures->row_count > initial_count);
+    assert(departures->scroll_offset > 0U);
+    assert(departures->row_count == 32U);
+    board.direction = AIRPORT_BOARD_ARRIVALS;
+    assert(strcmp(airport_board_stream(&board)->selected_row_id,
+                  arrivals->selected_row_id) == 0);
+    (void)airport_board_select_delta(&board, 1, 3U);
+    board.direction = AIRPORT_BOARD_DEPARTURES;
+    assert(strcmp(airport_board_stream(&board)->selected_row_id,
+                  departures->selected_row_id) == 0);
+    airport_board_free(&board);
+}
+
+static AirportFlightOccurrence *find_board_row(AirportBoardStream *stream,
+                                                const char *row_id)
+{
+    size_t index;
+    for (index = 0U; index < stream->row_count; index++)
+        if (strcmp(stream->rows[index].row_id, row_id) == 0) return &stream->rows[index];
+    return NULL;
+}
+
+static void test_airport_board_refresh_and_navigation(void)
+{
+    AirportBoardState board;
+    AirportBoardStream *departures;
+    AirportFlightOccurrence *changed;
+    FlightState flight;
+    VisualViewport viewport;
+    TelemetryHistory history;
+    char selected[AIRPORT_BOARD_ROW_ID_CAPACITY];
+    size_t scroll, initial_count;
+    assert(airport_board_fixture_load(&board, "MEL"));
+    departures = &board.streams[0];
+    (void)snprintf(departures->selected_row_id, sizeof(departures->selected_row_id),
+                   "dep:0:03");
+    departures->scroll_offset = 2U;
+    (void)snprintf(selected, sizeof(selected), "%s", departures->selected_row_id);
+    scroll = departures->scroll_offset;
+    initial_count = departures->row_count;
+    assert(airport_board_fixture_refresh(&board));
+    assert(departures->row_count == initial_count + 1U);
+    assert(find_board_row(departures, "dep:refresh:00") != NULL);
+    changed = find_board_row(departures, "dep:0:03");
+    assert(changed != NULL);
+    assert(strcmp(changed->departure_gate, "14") == 0);
+    assert(changed->status == AIRPORT_STATUS_BOARDING);
+    assert(changed->changes[BOARD_CHANGE_GATE].active);
+    assert(changed->changes[BOARD_CHANGE_STATUS].active);
+    assert(find_board_row(departures, "dep:0:05")->changes[BOARD_CHANGE_TERMINAL].active);
+    assert(find_board_row(departures, "dep:0:06")->changes[BOARD_CHANGE_CODESHARES].active);
+    assert(strcmp(departures->selected_row_id, selected) == 0);
+    assert(departures->scroll_offset == scroll);
+    assert(board.source_state == BOARD_LIVE);
+    assert(airport_board_fixture_open_selected(&board, &flight));
+    assert(strcmp(flight.identity.flight_number, changed->operating_designator) == 0);
+    telemetry_history_init(&history);
+    visual_viewport_init(&viewport, VISUAL_AIRCRAFT, &history);
+    visual_viewport_toggle(&viewport);
+    visual_viewport_toggle(&viewport);
+    assert(viewport.mode == VISUAL_ROUTE_MAP);
+    assert(visual_viewport_toggle_geography(&viewport));
+    assert(viewport.geography_enabled);
+    assert(strcmp(departures->selected_row_id, selected) == 0);
+    assert(departures->scroll_offset == scroll);
+    airport_board_expire_changes(&board, changed->changes[BOARD_CHANGE_GATE].expires_at);
+    assert(!changed->changes[BOARD_CHANGE_GATE].active);
+    (void)snprintf(departures->selected_row_id, sizeof(departures->selected_row_id), "missing");
+    airport_board_reconcile_selection(departures, AIRPORT_BOARD_DEPARTURES,
+                                      board.local_now);
+    assert(airport_board_selected(&board) != NULL);
+    assert(airport_board_fixture_refresh(&board));
+    assert(board.source_state == BOARD_STALE);
+    board.direction = AIRPORT_BOARD_ARRIVALS;
+    assert(find_board_row(&board.streams[1], "arr:0:02")->actual_arrival_utc.available);
+    assert(airport_board_fixture_refresh(&board));
+    assert(board.source_state == BOARD_OFFLINE);
+    airport_board_free(&board);
+}
+
+static void test_airport_board_rendering_and_input(void)
+{
+    static const TerminalSize sizes[] = {
+        { 130, 30 }, { 100, 24 }, { 70, 20 }, { 44, 14 }
+    };
+    AirportBoardState board;
+    AnimationState animation;
+    InputParser parser;
+    InputAction action = INPUT_NONE;
+    size_t size_index;
+    assert(airport_board_fixture_load(&board, "MEL"));
+    (void)memset(&animation, 0, sizeof(animation));
+    animation.heartbeat = "•";
+    for (size_index = 0U; size_index < sizeof(sizes) / sizeof(sizes[0]); size_index++) {
+        Layout layout = layout_select(sizes[size_index]);
+        Frame frame;
+        int row;
+        airport_board_render(&frame, &board, &animation, &layout);
+        assert(frame.count <= FRAME_MAX_LINES);
+        assert(frame_contains(&frame, "MEL"));
+        assert(frame_contains(&frame, "FIXTURE LIVE"));
+        assert(frame_contains(&frame, "NOW"));
+        assert(frame_contains(&frame, ">"));
+        assert(board.hitbox_count > 0U);
+        if (size_index == 0U) {
+            assert(frame_style_count(&frame, FRAME_STYLE_ACCENT) > 0);
+            assert(frame_style_count(&frame, FRAME_STYLE_WARNING) > 0);
+            assert(frame_style_count(&frame, FRAME_STYLE_DANGER) > 0);
+            assert(frame_style_count(&frame, FRAME_STYLE_SUCCESS) > 0);
+            assert(frame_contains(&frame, "▸"));
+        }
+        for (row = 0; row < frame.count; row++) {
+            char plain[FRAME_RENDERED_LINE_CAPACITY];
+            char styled[FRAME_RENDERED_LINE_CAPACITY];
+            assert(frame_render_line(&frame, row, false, plain, sizeof(plain)));
+            assert(frame_render_line(&frame, row, true, styled, sizeof(styled)));
+            assert(strchr(plain, '\x1b') == NULL);
+            assert(frame_text_width(frame.lines[row]) <= frame.width);
+        }
+    }
+    animation.heartbeat = "·";
+    {
+        Layout layout = layout_select((TerminalSize){ 130, 30 });
+        Frame frame;
+        airport_board_render(&frame, &board, &animation, &layout);
+        assert(frame_contains(&frame, "▹"));
+        board.local_now = board.streams[0].rows[0].scheduled_departure_utc.value - 1;
+        airport_board_render(&frame, &board, &animation, &layout);
+        assert(frame_contains(&frame, "NOW"));
+        board.local_now = board.streams[0].rows[board.streams[0].row_count - 1U]
+                          .scheduled_departure_utc.value + 1;
+        airport_board_render(&frame, &board, &animation, &layout);
+        assert(frame_contains(&frame, "NOW"));
+    }
+    input_parser_init(&parser);
+    assert(!input_parser_feed(&parser, 0x1b, &action));
+    assert(!input_parser_feed(&parser, '[', &action));
+    assert(input_parser_feed(&parser, 'A', &action));
+    assert(action == INPUT_BOARD_UP);
+    assert(!input_parser_feed(&parser, 0x1b, &action));
+    assert(!input_parser_feed(&parser, '[', &action));
+    assert(input_parser_feed(&parser, 'B', &action));
+    assert(action == INPUT_BOARD_DOWN);
+    assert(input_action_for_key('\n') == INPUT_BOARD_OPEN);
+    assert(input_action_for_key('a') == INPUT_BOARD_ARRIVALS);
+    assert(input_action_for_key('d') == INPUT_BOARD_DEPARTURES);
+    assert(input_action_for_key('b') == INPUT_BACK);
+    airport_board_free(&board);
+}
+
 int main(void)
 {
     assert(strcmp(FLIGHT_VERSION, "0.2.0") == 0);
@@ -1249,6 +1465,10 @@ int main(void)
     test_route_map_geography_states();
     test_route_map_geography_toggle_and_styles();
     test_visual_mode_contract();
+    test_airport_board_contracts_and_storage();
+    test_airport_board_fixture_streaming();
+    test_airport_board_refresh_and_navigation();
+    test_airport_board_rendering_and_input();
     (void)puts("data semantics tests passed");
     return 0;
 }

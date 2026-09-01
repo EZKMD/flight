@@ -38,11 +38,6 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
                    const Layout *layout, const VisualViewport *viewport)
 {
     Frame frame;
-    int top;
-    int row;
-    int index;
-    int visible;
-    bool styling_enabled = getenv("NO_COLOR") == NULL;
     time_t now = time(NULL);
     frame_init(&frame, layout->content_width);
 
@@ -54,7 +49,17 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
         compact_summary_render(&frame, flight, animation, now);
     else build_full(&frame, flight, animation, layout, viewport, now);
 
-    visible = frame.count < layout->height ? frame.count : layout->height;
+    renderer_present_frame(&frame, layout);
+}
+
+void renderer_present_frame(const Frame *frame, const Layout *layout)
+{
+    int top;
+    int row;
+    int index;
+    int visible;
+    bool styling_enabled = getenv("NO_COLOR") == NULL;
+    visible = frame->count < layout->height ? frame->count : layout->height;
     top = (layout->height - visible) / 2;
     (void)fputs("\x1b[H", stdout);
     for (row = 0; row < layout->height; row++) {
@@ -62,9 +67,9 @@ void renderer_draw(const FlightState *flight, const AnimationState *animation,
         index = row - top;
         if (index >= 0 && index < visible) {
             char rendered[FRAME_RENDERED_LINE_CAPACITY];
-            int left = (layout->width - frame.width) / 2;
+            int left = (layout->width - frame->width) / 2;
             if (left < 0) left = 0;
-            if (frame_render_line(&frame, index, styling_enabled,
+            if (frame_render_line(frame, index, styling_enabled,
                                   rendered, sizeof(rendered)))
                 (void)fprintf(stdout, "%*s%s", left, "", rendered);
         }

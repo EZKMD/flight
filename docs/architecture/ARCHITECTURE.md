@@ -112,17 +112,19 @@ main.c
     └── frame.c ── terminal output
 ```
 
-## Explicit future extension points
+## Application modes and extension points
 
-`AppMode` separates the implemented single-flight experience from a reserved
-airport-board application mode. Airport mode is not CLI-reachable and has no
-provider or renderer. Its lightweight `AirportBoardState` contract is explicitly
-separate from `FlightState`.
+`AppMode` separates the released single-flight experience from the fixture-only
+AirportBoard development mode. `AirportBoardState` owns independent dynamic
+arrival and departure streams, while `AirportBoardRenderer` consumes those
+provider-neutral contracts. Opening a selected occurrence translates it into a
+`FlightState` inside the current process; the board remains alive for exact back
+navigation. See [AirportBoard development mode](../airport-board.md).
 
 `VisualViewport` dispatches the implemented `AircraftVisual`,
 `AltitudeProfileVisual`, and `RouteMapVisual`; radar and minimal remain internal,
-CLI-inaccessible placeholders. All represent one `FlightState`; airport board
-is not a visual mode.
+CLI-inaccessible placeholders. All represent one `FlightState`; AirportBoard is
+a top-level application mode, not a visual mode.
 
 ```text
 VisualViewport
