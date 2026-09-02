@@ -1391,14 +1391,6 @@ static void test_airport_board_rendering_and_input(void)
         assert(frame_contains(&frame, "NOW"));
         assert(frame_contains(&frame, ">"));
         assert(board.hitbox_count > 0U);
-        if (size_index == 0U) {
-            char clicked_id[AIRPORT_BOARD_ROW_ID_CAPACITY];
-            assert(board.hitbox_count > 1U);
-            (void)snprintf(clicked_id, sizeof(clicked_id), "%s", board.hitboxes[1].row_id);
-            assert(airport_board_select_screen_row(&board,
-                                                    board.hitboxes[1].screen_row_start));
-            assert(strcmp(airport_board_stream(&board)->selected_row_id, clicked_id) == 0);
-        }
         if (size_index == 1U) {
             int line_index;
             initial_medium_frame_count = frame.count;
@@ -1481,19 +1473,6 @@ static void test_airport_board_rendering_and_input(void)
     assert(input_action_for_key('a') == INPUT_BOARD_ARRIVALS);
     assert(input_action_for_key('d') == INPUT_BOARD_DEPARTURES);
     assert(input_action_for_key('b') == INPUT_BACK);
-    input_parser_init(&parser);
-    {
-        const char mouse[] = "\x1b[<0;10;12M";
-        size_t index;
-        for (index = 0U; index + 1U < sizeof(mouse) - 1U; index++)
-            assert(!input_parser_feed(&parser, (unsigned char)mouse[index], &action));
-        assert(input_parser_feed(&parser,
-                                 (unsigned char)mouse[sizeof(mouse) - 2U], &action));
-        assert(action == INPUT_MOUSE);
-        assert(parser.mouse_pressed);
-        assert(parser.mouse_column == 9);
-        assert(parser.mouse_row == 11);
-    }
     airport_board_free(&board);
 }
 

@@ -176,19 +176,3 @@ void airport_board_expire_changes(AirportBoardState *board, time_t now)
         }
     }
 }
-
-bool airport_board_select_screen_row(AirportBoardState *board, int screen_row)
-{
-    AirportBoardStream *stream = airport_board_stream(board);
-    size_t index;
-    for (index = 0U; index < board->hitbox_count; index++) {
-        const BoardRowHitbox *hitbox = &board->hitboxes[index];
-        if (screen_row >= hitbox->screen_row_start &&
-            screen_row <= hitbox->screen_row_end) {
-            (void)snprintf(stream->selected_row_id,
-                           sizeof(stream->selected_row_id), "%s", hitbox->row_id);
-            return true;
-        }
-    }
-    return false;
-}
