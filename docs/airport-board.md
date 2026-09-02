@@ -19,6 +19,7 @@ default direction.
 ## Interaction
 
 - `↑` / `↓`: select the previous or next occurrence
+- left click: select a visible occurrence
 - `Enter`: open the selected occurrence in the existing flight tracker in the
   same process
 - `a` / `d`: switch to arrivals or departures
@@ -28,8 +29,9 @@ default direction.
 - `q`: quit
 
 Arrivals and departures retain independent selection, scroll, and loaded-window
-state. The renderer records row hitboxes for future mouse support; mouse parsing
-is deliberately deferred.
+state. Mouse reporting is enabled only while the board is visible and is disabled
+inside flight view and on exit. Terminal text selection may require the terminal's
+usual modifier-key override while mouse reporting is active.
 
 ## Architecture
 

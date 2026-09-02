@@ -47,6 +47,7 @@ bool terminal_enter(Terminal *terminal)
 {
     struct termios raw;
     terminal->active = false;
+    terminal->mouse_enabled = false;
     if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) return false;
     if (tcgetattr(STDIN_FILENO, &terminal->original) != 0) return false;
     terminal->original_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -66,9 +67,19 @@ bool terminal_enter(Terminal *terminal)
     return true;
 }
 
+void terminal_set_mouse(Terminal *terminal, bool enabled)
+{
+    if (!terminal->active || terminal->mouse_enabled == enabled) return;
+    if (enabled) (void)fputs("\x1b[?1000h\x1b[?1006h", stdout);
+    else (void)fputs("\x1b[?1006l\x1b[?1000l", stdout);
+    (void)fflush(stdout);
+    terminal->mouse_enabled = enabled;
+}
+
 void terminal_leave(Terminal *terminal)
 {
     if (!terminal->active) return;
+    terminal_set_mouse(terminal, false);
     (void)tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminal->original);
     (void)fcntl(STDIN_FILENO, F_SETFL, terminal->original_flags);
     (void)fputs("\x1b[0m\x1b[?25h\x1b[?1049l", stdout);

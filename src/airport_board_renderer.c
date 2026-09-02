@@ -240,12 +240,20 @@ void airport_board_render(Frame *frame, AirportBoardState *board,
     frame_blank(frame);
     if (layout->mode == LAYOUT_WIDE || layout->mode == LAYOUT_MEDIUM)
         (void)snprintf(footer, sizeof(footer),
-                       "↑↓ SELECT  ENTER OPEN  a ARRIVALS  d DEPARTURES  r REFRESH  q QUIT");
-    else (void)snprintf(footer, sizeof(footer), "↑↓ SELECT  ENTER OPEN  a/d BOARD  q QUIT");
+                       "↑↓/CLICK SELECT  ENTER OPEN  a ARRIVALS  d DEPARTURES  r REFRESH  q QUIT");
+    else (void)snprintf(footer, sizeof(footer), "↑↓/CLICK SELECT  ENTER OPEN  a/d BOARD  q QUIT");
     frame_center(frame, footer, 0);
     (void)snprintf(freshness, sizeof(freshness), "%s · UPDATED %lds AGO",
                    source_label(board->source_state),
                    (long)(board->local_now - board->last_updated));
     add_styled(frame, freshness, 0, (int)strlen(source_label(board->source_state)),
                source_style(board->source_state));
+    {
+        int visible = frame->count < layout->height ? frame->count : layout->height;
+        int top = (layout->height - visible) / 2;
+        for (index = 0U; index < board->hitbox_count; index++) {
+            board->hitboxes[index].screen_row_start += top;
+            board->hitboxes[index].screen_row_end += top;
+        }
+    }
 }

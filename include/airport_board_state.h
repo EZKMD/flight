@@ -96,5 +96,6 @@ void airport_board_reconcile_selection(AirportBoardStream *stream,
                                        AirportBoardDirection direction,
                                        time_t previous_time);
 void airport_board_expire_changes(AirportBoardState *board, time_t now);
+bool airport_board_select_screen_row(AirportBoardState *board, int screen_row);
 
 #endif

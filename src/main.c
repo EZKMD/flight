@@ -238,6 +238,7 @@ static int run_airport_board(const Options *options)
         (void)fputs("flight: an interactive terminal is required\n", stderr);
         return 1;
     }
+    terminal_set_mouse(&terminal, true);
     size = terminal_get_size();
     layout = layout_select(size);
     while (running && stop_requested == 0) {
@@ -258,6 +259,9 @@ static int run_airport_board(const Options *options)
                         airport_board_visible_capacity(&layout));
                     (void)airport_board_fixture_prefetch(&board);
                     redraw = true;
+                } else if (action == INPUT_MOUSE && parser.mouse_pressed &&
+                           airport_board_select_screen_row(&board, parser.mouse_row)) {
+                    redraw = true;
                 } else if (action == INPUT_BOARD_ARRIVALS ||
                            action == INPUT_BOARD_DEPARTURES) {
                     board.direction = action == INPUT_BOARD_ARRIVALS ?
@@ -270,11 +274,16 @@ static int run_airport_board(const Options *options)
                            airport_board_fixture_open_selected(&board, &opened_flight)) {
                     telemetry_history_init(&opened_history);
                     visual_viewport_init(&opened_viewport, VISUAL_AIRCRAFT, &opened_history);
+                    terminal_set_mouse(&terminal, false);
                     mode = APP_MODE_FLIGHT;
                     redraw = true;
                 }
             } else {
-                if (action == INPUT_BACK) { mode = APP_MODE_AIRPORT; redraw = true; }
+                if (action == INPUT_BACK) {
+                    mode = APP_MODE_AIRPORT;
+                    terminal_set_mouse(&terminal, true);
+                    redraw = true;
+                }
                 else if (action == INPUT_REFRESH) {
                     mock_provider_refresh(&opened_flight, FIXTURE_QF9_CRUISING,
                                           board.local_now);
