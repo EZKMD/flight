@@ -14,7 +14,10 @@ typedef uint8_t FrameStyle;
 enum {
     FRAME_STYLE_DEFAULT = 0,
     FRAME_STYLE_DIM,
-    FRAME_STYLE_ACCENT
+    FRAME_STYLE_ACCENT,
+    FRAME_STYLE_WARNING,
+    FRAME_STYLE_DANGER,
+    FRAME_STYLE_SUCCESS
 };
 
 typedef struct {

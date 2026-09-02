@@ -108,6 +108,9 @@ static const char *style_sequence(FrameStyle style)
 {
     if (style == FRAME_STYLE_DIM) return "\x1b[2m";
     if (style == FRAME_STYLE_ACCENT) return "\x1b[96m";
+    if (style == FRAME_STYLE_WARNING) return "\x1b[33m";
+    if (style == FRAME_STYLE_DANGER) return "\x1b[31m";
+    if (style == FRAME_STYLE_SUCCESS) return "\x1b[32m";
     return "\x1b[0m";
 }
 

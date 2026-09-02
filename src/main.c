@@ -1,4 +1,6 @@
 #include "airlabs_resolver.h"
+#include "airport_board_fixture.h"
+#include "airport_board_renderer.h"
 #include "app_mode.h"
 #include "animation.h"
 #include "http_transport.h"
@@ -28,8 +30,11 @@ typedef struct {
     const char *flight_number;
     const char *date;
     bool use_fixture;
+    bool use_board_fixture;
     FixtureKind fixture;
     AppMode mode;
+    const char *airport_iata;
+    AirportBoardDirection board_direction;
     VisualMode view;
     bool debug_provider;
     bool show_help;
@@ -52,10 +57,14 @@ static void print_usage(FILE *output, const char *program)
 {
     (void)fprintf(output,
         "usage: %s [FLIGHT] [OPTIONS]\n"
+        "       %s --airport IATA [--arrivals|--departures] --fixture board\n"
         "\n"
         "options:\n"
         "  --date YYYY-MM-DD   constrain occurrence date\n"
         "  --fixture NAME      use deterministic mock data\n"
+        "  --airport IATA      open fixture-backed AirportBoard mode\n"
+        "  --arrivals          show airport arrivals\n"
+        "  --departures        show airport departures (default)\n"
         "  --view NAME         select aircraft, altitude, or route\n"
         "  --debug-provider    print safe diagnostics after exit\n"
         "  --help              show this help\n"
@@ -63,8 +72,8 @@ static void print_usage(FILE *output, const char *program)
         "\n"
         "controls: q quit, r refresh, v switch view, f next fixture, g geography (route)\n"
         "views: aircraft, altitude, route\n"
-        "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable\n",
-        program);
+        "fixtures: cruising, scheduled, descending, landed, delayed, stale, unavailable, board\n",
+        program, program);
 }
 
 static bool valid_date(const char *date)
@@ -83,19 +92,39 @@ static bool parse_arguments(int argc, char **argv, Options *options,
     options->flight_number = "QF9";
     options->date = "";
     options->use_fixture = false;
+    options->use_board_fixture = false;
     options->fixture = FIXTURE_QF9_CRUISING;
     options->mode = APP_MODE_FLIGHT;
+    options->airport_iata = "";
+    options->board_direction = AIRPORT_BOARD_DEPARTURES;
     options->view = VISUAL_AIRCRAFT;
     options->debug_provider = false;
     options->show_help = false;
     options->show_version = false;
     for (index = 1; index < argc; index++) {
         if (strcmp(argv[index], "--fixture") == 0) {
-            if (++index >= argc || !mock_provider_parse_fixture(argv[index], &options->fixture)) {
+            if (++index >= argc) {
                 (void)snprintf(error, error_capacity, "--fixture requires a valid fixture name");
                 return false;
             }
-            options->use_fixture = true;
+            if (strcmp(argv[index], "board") == 0) options->use_board_fixture = true;
+            else if (mock_provider_parse_fixture(argv[index], &options->fixture))
+                options->use_fixture = true;
+            else {
+                (void)snprintf(error, error_capacity, "--fixture requires a valid fixture name");
+                return false;
+            }
+        } else if (strcmp(argv[index], "--airport") == 0) {
+            if (++index >= argc || strlen(argv[index]) != 3U) {
+                (void)snprintf(error, error_capacity, "--airport requires a three-letter IATA code");
+                return false;
+            }
+            options->mode = APP_MODE_AIRPORT;
+            options->airport_iata = argv[index];
+        } else if (strcmp(argv[index], "--arrivals") == 0) {
+            options->board_direction = AIRPORT_BOARD_ARRIVALS;
+        } else if (strcmp(argv[index], "--departures") == 0) {
+            options->board_direction = AIRPORT_BOARD_DEPARTURES;
         } else if (strcmp(argv[index], "--date") == 0) {
             if (++index >= argc || !valid_date(argv[index])) {
                 (void)snprintf(error, error_capacity, "--date requires YYYY-MM-DD");
@@ -119,6 +148,15 @@ static bool parse_arguments(int argc, char **argv, Options *options,
             return false;
         }
         else options->flight_number = argv[index];
+    }
+    if (options->mode == APP_MODE_AIRPORT && !options->use_board_fixture) {
+        (void)snprintf(error, error_capacity,
+                       "AirportBoard is fixture-only; use --fixture board");
+        return false;
+    }
+    if (options->use_board_fixture && options->mode != APP_MODE_AIRPORT) {
+        (void)snprintf(error, error_capacity, "--fixture board requires --airport IATA");
+        return false;
     }
     return true;
 }
@@ -161,6 +199,112 @@ static uint64_t retry_delay(const FlightDataProvider *provider, ProviderResult r
     return provider->refresh_interval_ms;
 }
 
+static int run_airport_board(const Options *options)
+{
+    AirportBoardState board;
+    AppMode mode = APP_MODE_AIRPORT;
+    FlightState opened_flight;
+    TelemetryHistory opened_history;
+    VisualViewport opened_viewport;
+    AnimationState animation;
+    RuntimeSchedule schedule;
+    Terminal terminal;
+    TerminalSize size;
+    Layout layout;
+    InputParser parser;
+    bool running = true;
+    bool redraw = true;
+    int byte;
+    if (!airport_board_fixture_load(&board, options->airport_iata)) {
+        (void)fprintf(stderr, "flight: no AirportBoard fixture for %s\n",
+                      options->airport_iata);
+        return 2;
+    }
+    board.direction = options->board_direction;
+    animation_init(&animation);
+    runtime_schedule_init(&schedule, animation_now_ms());
+    input_parser_init(&parser);
+    telemetry_history_init(&opened_history);
+    visual_viewport_init(&opened_viewport, VISUAL_AIRCRAFT, &opened_history);
+    if (!terminal_install_resize_handler()) {
+        airport_board_free(&board);
+        (void)fputs("flight: could not install resize handler\n", stderr);
+        return 1;
+    }
+    (void)signal(SIGINT, on_stop);
+    (void)signal(SIGTERM, on_stop);
+    if (!terminal_enter(&terminal)) {
+        airport_board_free(&board);
+        (void)fputs("flight: an interactive terminal is required\n", stderr);
+        return 1;
+    }
+    size = terminal_get_size();
+    layout = layout_select(size);
+    while (running && stop_requested == 0) {
+        uint64_t now_ms = animation_now_ms();
+        if (terminal_resize_pending()) {
+            size = terminal_get_size();
+            layout = layout_select(size);
+            redraw = true;
+        }
+        while ((byte = terminal_read_key()) >= 0) {
+            InputAction action;
+            if (!input_parser_feed(&parser, byte, &action)) continue;
+            if (action == INPUT_QUIT) running = false;
+            else if (mode == APP_MODE_AIRPORT) {
+                if (action == INPUT_BOARD_UP || action == INPUT_BOARD_DOWN) {
+                    (void)airport_board_select_delta(&board,
+                        action == INPUT_BOARD_UP ? -1 : 1,
+                        airport_board_visible_capacity(&layout));
+                    (void)airport_board_fixture_prefetch(&board);
+                    redraw = true;
+                } else if (action == INPUT_BOARD_ARRIVALS ||
+                           action == INPUT_BOARD_DEPARTURES) {
+                    board.direction = action == INPUT_BOARD_ARRIVALS ?
+                                      AIRPORT_BOARD_ARRIVALS : AIRPORT_BOARD_DEPARTURES;
+                    redraw = true;
+                } else if (action == INPUT_REFRESH) {
+                    (void)airport_board_fixture_refresh(&board);
+                    redraw = true;
+                } else if (action == INPUT_BOARD_OPEN &&
+                           airport_board_fixture_open_selected(&board, &opened_flight)) {
+                    telemetry_history_init(&opened_history);
+                    visual_viewport_init(&opened_viewport, VISUAL_AIRCRAFT, &opened_history);
+                    mode = APP_MODE_FLIGHT;
+                    redraw = true;
+                }
+            } else {
+                if (action == INPUT_BACK) { mode = APP_MODE_AIRPORT; redraw = true; }
+                else if (action == INPUT_REFRESH) {
+                    mock_provider_refresh(&opened_flight, FIXTURE_QF9_CRUISING,
+                                          board.local_now);
+                    redraw = true;
+                } else if (action == INPUT_NEXT_VISUAL) {
+                    visual_viewport_toggle(&opened_viewport);
+                    redraw = true;
+                } else if (action == INPUT_TOGGLE_GEOGRAPHY &&
+                           visual_viewport_toggle_geography(&opened_viewport)) redraw = true;
+            }
+        }
+        if (runtime_animation_due(&schedule, now_ms) &&
+            animation_update(&animation, now_ms)) redraw = true;
+        if (runtime_render_due(&schedule, now_ms)) redraw = true;
+        airport_board_expire_changes(&board, board.local_now);
+        if (redraw) {
+            if (mode == APP_MODE_AIRPORT) {
+                Frame frame;
+                airport_board_render(&frame, &board, &animation, &layout);
+                renderer_present_frame(&frame, &layout);
+            } else renderer_draw(&opened_flight, &animation, &layout, &opened_viewport);
+            redraw = false;
+        }
+        sleep_frame();
+    }
+    terminal_leave(&terminal);
+    airport_board_free(&board);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     Options options;
@@ -198,6 +342,7 @@ int main(int argc, char **argv)
         (void)printf("flight %s\n", FLIGHT_VERSION);
         return 0;
     }
+    if (options.mode == APP_MODE_AIRPORT) return run_airport_board(&options);
     if (!options.use_fixture &&
         flight_designator_classify(options.flight_number) == DESIGNATOR_MALFORMED) {
         (void)fprintf(stderr, "flight: malformed commercial designator: %s\n",
@@ -223,11 +368,6 @@ int main(int argc, char **argv)
     collect_history(&history, &options, &live_context, &flight);
     animation_init(&animation);
     runtime_schedule_init(&schedule, animation_now_ms());
-    /* Airport mode remains intentionally unavailable through the public CLI. */
-    if (options.mode != APP_MODE_FLIGHT) {
-        http_transport_cleanup();
-        return 2;
-    }
     visual_viewport_init(&viewport, options.view, &history);
     if (!terminal_install_resize_handler()) {
         (void)fputs("flight: could not install resize handler\n", stderr);

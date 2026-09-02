@@ -293,7 +293,8 @@ remain inactive placeholders.
   there is no flown trail, waypoints, pan/zoom, weather, nearby traffic, or airspace.
 - Radar and minimal visual modes remain internal placeholders and are not
   CLI-reachable.
-- Airport board mode is modeled separately but not implemented.
+- AirportBoard is available only as deterministic offline development fixtures;
+  live airport-board data is not implemented.
 
 ## Release and development documentation
 
@@ -302,6 +303,7 @@ remain inactive placeholders.
 - `docs/releases/v0.2.0.md` — V0.2.0 release notes
 - `docs/publishing.md` — credential-safe publishing and release checklist
 - `docs/live-validation.md` — detailed live-provider validation notes
+- `docs/airport-board.md` — fixture-only AirportBoard architecture and controls
 - `docs/future-features.md` — non-committed future directions
 - `docs/architecture/` — documentation-only Archify diagrams
 
