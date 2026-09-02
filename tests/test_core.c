@@ -1397,9 +1397,13 @@ static void test_airport_board_rendering_and_input(void)
             for (line_index = 0; line_index < frame.count; line_index++) {
                 const char *gate_closed = strstr(frame.lines[line_index], "GATE CLOSED");
                 if (gate_closed != NULL) {
+                    const char *alert = strchr(gate_closed, '!');
                     size_t column = (size_t)(gate_closed - frame.lines[line_index]);
                     assert(frame.styles[line_index][column] == FRAME_STYLE_WARNING);
                     assert(frame.styles[line_index][column + strlen("GATE CLOSED") - 1U] ==
+                           FRAME_STYLE_WARNING);
+                    assert(alert != NULL);
+                    assert(frame.styles[line_index][(size_t)(alert - frame.lines[line_index])] ==
                            FRAME_STYLE_WARNING);
                 }
             }
@@ -1410,6 +1414,17 @@ static void test_airport_board_rendering_and_input(void)
             assert(frame_style_count(&frame, FRAME_STYLE_DANGER) > 0);
             assert(frame_style_count(&frame, FRAME_STYLE_SUCCESS) > 0);
             assert(frame_contains(&frame, "▸"));
+            for (row = 0; row < frame.count; row++) {
+                const char *boarding = strstr(frame.lines[row], "▸");
+                const char *check_in = strstr(frame.lines[row], "CHECK-IN") != NULL ?
+                                       strstr(frame.lines[row], "•") : NULL;
+                if (boarding != NULL)
+                    assert(frame.styles[row][(size_t)(boarding - frame.lines[row])] ==
+                           FRAME_STYLE_ACCENT);
+                if (check_in != NULL)
+                    assert(frame.styles[row][(size_t)(check_in - frame.lines[row])] ==
+                           FRAME_STYLE_ACCENT);
+            }
         }
         for (row = 0; row < frame.count; row++) {
             char plain[FRAME_RENDERED_LINE_CAPACITY];
@@ -1436,6 +1451,7 @@ static void test_airport_board_rendering_and_input(void)
         Frame frame;
         airport_board_render(&frame, &board, &animation, &layout);
         assert(frame_contains(&frame, "▹"));
+        assert(frame_contains(&frame, "GATE CLOSED    ."));
         board.local_now = board.streams[0].rows[0].scheduled_departure_utc.value - 1;
         airport_board_render(&frame, &board, &animation, &layout);
         assert(frame_contains(&frame, "NOW"));

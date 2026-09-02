@@ -47,7 +47,7 @@ static const char *activity(const AirportFlightOccurrence *row,
     if (row->status == AIRPORT_STATUS_BOARDING) return active ? " ▸" : " ▹";
     if (row->status == AIRPORT_STATUS_CHECK_IN) return active ? " •" : " ·";
     if (row->status == AIRPORT_STATUS_APPROACHING) return active ? " ↓" : "";
-    if (row->status == AIRPORT_STATUS_GATE_CLOSED) return active ? " !" : "";
+    if (row->status == AIRPORT_STATUS_GATE_CLOSED) return active ? " !" : " .";
     return "";
 }
 
@@ -84,7 +84,8 @@ static void add_styled(Frame *frame, const char *line, int styled_column,
 }
 
 static void add_status_line(Frame *frame, const char *line, int status_column,
-                            int status_width, FrameStyle status,
+                            int status_width, int indicator_column,
+                            int indicator_width, FrameStyle status,
                             bool changed)
 {
     FrameStyle styles[FRAME_LINE_CAPACITY];
@@ -92,6 +93,8 @@ static void add_status_line(Frame *frame, const char *line, int status_column,
     size_t length = (size_t)frame_text_width(line);
     (void)memset(styles, FRAME_STYLE_DEFAULT, sizeof(styles));
     for (index = status_column; index < status_column + status_width &&
+         index < FRAME_LINE_CAPACITY; index++) if (index >= 0) styles[index] = status;
+    for (index = indicator_column; index < indicator_column + indicator_width &&
          index < FRAME_LINE_CAPACITY; index++) if (index >= 0) styles[index] = status;
     if (changed) {
         size_t start = length > 7U ? length - 7U : 0U;
@@ -164,7 +167,8 @@ static void render_row(Frame *frame, AirportBoardState *board,
                        recently_changed(row) ? "  UPDATED" : "");
         status_column = 53;
         add_status_line(frame, line, status_column,
-                        frame_text_width(status) + frame_text_width(indicator), style,
+                        frame_text_width(status), status_column + 14,
+                        frame_text_width(indicator), style,
                         recently_changed(row));
     } else if (layout->mode == LAYOUT_MEDIUM) {
         (void)snprintf(line, sizeof(line), "%c %-5s %-8s %-17.17s %-5.5s %-14s%s%s",
@@ -174,7 +178,8 @@ static void render_row(Frame *frame, AirportBoardState *board,
                        recently_changed(row) ? " *" : "");
         status_column = 41;
         add_status_line(frame, line, status_column,
-                        frame_text_width(status) + frame_text_width(indicator), style,
+                        frame_text_width(status), status_column + 14,
+                        frame_text_width(indicator), style,
                         recently_changed(row));
     } else {
         (void)snprintf(line, sizeof(line), "%c%s %-8s %-12.12s",
