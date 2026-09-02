@@ -44,7 +44,7 @@ static const char *activity(const AirportFlightOccurrence *row,
 {
     bool active = animation != NULL && animation->heartbeat != NULL &&
                   strcmp(animation->heartbeat, "•") == 0;
-    if (row->status == AIRPORT_STATUS_BOARDING) return active ? " ▸" : " ▹";
+    if (row->status == AIRPORT_STATUS_BOARDING) return active ? " ▶" : " ▸";
     if (row->status == AIRPORT_STATUS_CHECK_IN) return active ? " •" : " ·";
     if (row->status == AIRPORT_STATUS_APPROACHING) return active ? " ↓" : "";
     if (row->status == AIRPORT_STATUS_GATE_CLOSED) return active ? " !" : " .";

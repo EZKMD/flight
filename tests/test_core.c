@@ -1413,9 +1413,9 @@ static void test_airport_board_rendering_and_input(void)
             assert(frame_style_count(&frame, FRAME_STYLE_WARNING) > 0);
             assert(frame_style_count(&frame, FRAME_STYLE_DANGER) > 0);
             assert(frame_style_count(&frame, FRAME_STYLE_SUCCESS) > 0);
-            assert(frame_contains(&frame, "▸"));
+            assert(frame_contains(&frame, "▶"));
             for (row = 0; row < frame.count; row++) {
-                const char *boarding = strstr(frame.lines[row], "▸");
+                const char *boarding = strstr(frame.lines[row], "▶");
                 const char *check_in = strstr(frame.lines[row], "CHECK-IN") != NULL ?
                                        strstr(frame.lines[row], "•") : NULL;
                 if (boarding != NULL)
@@ -1450,7 +1450,7 @@ static void test_airport_board_rendering_and_input(void)
         Layout layout = layout_select((TerminalSize){ 130, 30 });
         Frame frame;
         airport_board_render(&frame, &board, &animation, &layout);
-        assert(frame_contains(&frame, "▹"));
+        assert(frame_contains(&frame, "▸"));
         assert(frame_contains(&frame, "GATE CLOSED    ."));
         board.local_now = board.streams[0].rows[0].scheduled_departure_utc.value - 1;
         airport_board_render(&frame, &board, &animation, &layout);
